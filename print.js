@@ -243,7 +243,9 @@ function overviewPanels(diagram, compact, model, pageOf, limit, room) {
     // smallest one that doesn't.
     // Skip a branch that is nearly the whole box: moving it just leaves an
     // empty box behind.
-    const inside = [...tall.querySelectorAll(".branch[data-id]")].filter((b) => b.offsetHeight < tall.offsetHeight * 0.8);
+    // The start and branches already in a box of their own stay put.
+    const inside = [...tall.querySelectorAll(".branch[data-id]")].filter((b) => b.offsetHeight < tall.offsetHeight * 0.8 &&
+      b.dataset.id !== plan.points[0].id && !cut.has(b.dataset.id));
     if (!inside.length) break;
     const fits = inside.filter((b) => b.offsetHeight <= limit);
     const pick = fits.length ? fits.reduce((a, b) => (b.offsetHeight > a.offsetHeight ? b : a))
@@ -535,11 +537,11 @@ function pathTable() {
   table.append(thead);
   for (const x of rows) {
     const cd = x.conduit;
-    const c = pathCable(x);
+    const cables = pathCables(x);
     const tr = el("tr");
     tr.append(el("td", "", point(x.from).name), el("td", "", point(x.to).name), el("td", "strong", cd.size || "—"),
       el("td", "", cd.size ? String(cd.ducts || 1) : "—"), el("td", "", cd.color || "—"),
-      el("td", "", cd.footage ? `${cd.footage} ft` : "—"), el("td", "", c ? `${c.name} (${c.fibers}F)` : "none"));
+      el("td", "", cd.footage ? `${cd.footage} ft` : "—"), el("td", "", cables.map((c) => `${c.name} (${c.fibers}F)`).join(", ") || "none"));
     table.append(tr);
   }
   wrap.append(table);

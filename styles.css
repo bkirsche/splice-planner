@@ -1701,7 +1701,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .grid-wire.empty { stroke: var(--line-a) !important; stroke-dasharray: 8 6; stroke-width: 3; }
 .grid-arrow.empty { fill: var(--line-a) !important; }
 .grid-wire.past { opacity: 0.45; }
-.grid-wire.selected { stroke: var(--accent-2) !important; }
+.grid-wire.selected { filter: drop-shadow(0 0 3px var(--accent-2)); }
 .grid-label {
   position: absolute;
   z-index: 2;
@@ -1721,7 +1721,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .grid-label { transform: translate(-50%, -50%); }
 .grid-label .cable-name { font-size: 0.78rem; }
 .grid-label .cable-size { font-size: 0.68rem; }
-.grid-label:hover .cable-name, .grid-label.selected .cable-name { color: var(--accent-2); }
+.grid-label .cable-row:hover .cable-name, .grid-label.selected .cable-name { color: var(--accent-2); }
 .zoom-btn.fit .ic { width: 14px; height: 14px; vertical-align: -2px; }
 .zoom-btn.on { background: color-mix(in srgb, var(--accent) 25%, var(--card)); color: var(--text); }
 /* Autosave switch beside Save (files.js) */
@@ -1801,3 +1801,21 @@ button.cx-slot { padding: 0; cursor: pointer; }
 .trace-ok { color: #b7ecd2; font-weight: 600; }
 .trace-bad { padding-left: 18px; }
 .linklike { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+
+/* One independently clickable row per cable on a path. */
+.cable-rows { display: grid; gap: 4px; }
+.cable-row {
+  display: grid;
+  gap: 1px;
+  padding: 2px 0;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-align: center;
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.cable-row:hover .cable-name { color: var(--accent-2); }
+.cable-row:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 2px; }

@@ -188,7 +188,18 @@ function drawGridLines() {
     links.push({ id: path.to, path, a, b, A: boxes.get(a.id), B: boxes.get(b.id) });
   }
   const routes = routeLines(boxes, links);
-  const hops = crossings(routes);
+  const wires = [];
+  const wireRoutes = new Map();
+  for (const k of links) {
+    const cables = pathCables(k.path);
+    for (const [i, c] of (cables.length ? cables : [null]).entries()) {
+      const id = wires.length;
+      const pts = offsetRoute(routes.get(k.id), c ? (i - (cables.length - 1) / 2) * 6 : 0);
+      wires.push({ k, c, id, pts });
+      wireRoutes.set(id, pts);
+    }
+  }
+  const hops = crossings(wireRoutes);
 
   const svg = document.createElementNS(SVG_NS, "svg");
   svg.setAttribute("class", "grid-lines");
@@ -196,14 +207,12 @@ function drawGridLines() {
   svg.setAttribute("width", board.offsetWidth);
   svg.setAttribute("height", board.offsetHeight);
   const labels = [];
-  for (const k of links) {
-    const pts = routes.get(k.id);
-    const { path, a, b } = k;
-    const c = pathCable(path);
+  for (const { k, c, id, pts } of wires) {
+    const { path } = k;
     const color = wireColor(c);
     const cls = "grid-wire" + (c ? "" : " empty") + (c && phasePast(c) ? " past" : "") + (path.to === openPathId ? " selected" : "");
     const line = document.createElementNS(SVG_NS, "path");
-    line.setAttribute("d", wirePath(pts, hops.get(k.id)));
+    line.setAttribute("d", wirePath(pts, hops.get(id)));
     line.setAttribute("class", cls);
     line.style.stroke = color;
     const head = document.createElementNS(SVG_NS, "path");
@@ -211,20 +220,33 @@ function drawGridLines() {
     head.setAttribute("class", "grid-arrow" + (c ? "" : " empty"));
     head.style.fill = color;
     svg.append(line, head);
-
-    const label = btnEl("", (e) => openLineMenu(path.to, e), "grid-label" + (c ? "" : " empty") + (path.to === openPathId ? " selected" : ""));
+  }
+  for (const k of links) {
+    const { path, a, b } = k;
+    const label = el("div", "grid-label" + (pathCables(path).length ? "" : " empty") + (path.to === openPathId ? " selected" : ""));
     label.title = `${a.name} → ${b.name}`;
-    if (c) {
-      label.append(el("span", "cable-name", c.name || "Cable"),
-        el("span", "cable-size", `${c.fibers}F` + (c.jumper ? " jumper" : "") + (c.through ? " · continued" : "") + (!c.through && c.tailFt && c.kind ? ` · ${c.tailFt} ft` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
-    } else label.append(el("span", "cable-name muted", b.type === "nid" ? "No drop" : "No cable"));
-    labels.push({ label, pts });
+    label.append(cableRows(path));
+    labels.push({ label, pts: routes.get(k.id) });
   }
   board.prepend(svg);
   board.append(...labels.map((x) => x.label));
   // Sizes first (one layout), then the spots.
   const sized = labels.map((x) => ({ ...x, w: x.label.offsetWidth, h: x.label.offsetHeight }));
   placeLabels(sized, [...boxes.values()]);
+}
+
+// Shift each stretch sideways; corners meet where the shifted stretches meet.
+function offsetRoute(pts, offset) {
+  if (!offset) return pts;
+  const normals = pts.slice(1).map((b, i) => {
+    const a = pts[i];
+    return { x: -Math.sign(b.y - a.y), y: Math.sign(b.x - a.x) };
+  });
+  return pts.map((p, i) => {
+    const before = normals[Math.max(0, i - 1)];
+    const after = normals[Math.min(i, normals.length - 1)];
+    return { x: p.x + offset * (before.x || after.x), y: p.y + offset * (before.y || after.y) };
+  });
 }
 
 // --- Routing the lines ---

@@ -524,7 +524,7 @@ function branchEl(p) {
     const kids = el("div", "children");
     for (const path of paths.filter((x) => !drops.includes(x))) {
       const child = el("div", "child");
-      child.append(pathEl(path, routeModel), branchEl(point(path.to)));
+      child.append(routePathEl(path, routeModel), branchEl(point(path.to)));
       kids.append(child);
     }
     const fanned = paths.filter((x) => drops.includes(x));
@@ -536,6 +536,35 @@ function branchEl(p) {
     branch.append(kids);
   }
   return branch;
+}
+
+// Each cable opens its own form; guests keep the read-only line menu.
+function cableRows(path) {
+  const rows = el("div", "cable-rows");
+  const cables = pathCables(path);
+  for (const c of cables.length ? cables : [null]) {
+    const row = btnEl("", (e) => {
+      e.stopPropagation();
+      if (!c || isGuest()) openLineMenu(path.to, e);
+      else openPath(path.to, c.id);
+    }, "cable-row");
+    row.append(el("span", "cable-name" + (c ? "" : " muted"), c ? c.name || "Cable" : point(path.to).type === "nid" ? "No drop" : "No cable"));
+    if (c) row.append(el("span", "cable-size", `${c.fibers}F` + (c.jumper ? " jumper" : "") + (c.through ? " · continued" : "") + (!c.through && c.tailFt && c.kind ? ` · ${c.tailFt} ft` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
+    rows.append(row);
+  }
+  return rows;
+}
+
+function routePathEl(path, model) {
+  const old = pathEl(path, model);
+  const wrap = el("div", old.className);
+  wrap.style.cssText = old.style.cssText;
+  wrap.append(cableRows(path));
+  for (const child of [...old.children]) {
+    if (!child.matches(".cable-name, .cable-size")) wrap.append(child);
+  }
+  wrap.addEventListener("click", (e) => openLineMenu(path.to, e));
+  return wrap;
 }
 
 function isEndHome(path) {
@@ -560,15 +589,9 @@ function fanEl(paths) {
     const row = el("div", "fan-row" + (c ? "" : " empty") + (c && phasePast(c) ? " past" : "") +
       (path.to === openPathId ? " selected" : ""));
     if (c) row.dataset.wire = wireColor(c);
-    const label = el("button", "fan-drop");
-    label.type = "button";
+    const label = el("div", "fan-drop");
     label.title = `Drop to ${point(path.to).name}`;
-    label.append(el("span", "cable-name" + (c ? "" : " muted"), c ? c.name : "No drop"));
-    if (c) label.append(el("span", "cable-size", `${c.fibers}F` + (c.jumper ? " jumper" : "") + (!c.through && c.tailFt && c.kind ? ` · ${c.tailFt} ft` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
-    label.addEventListener("click", (e) => {
-      e.stopPropagation();
-      openPath(path.to);
-    });
+    label.append(cableRows(path));
     row.append(label, branchEl(point(path.to)));
     rows.append(row);
   }

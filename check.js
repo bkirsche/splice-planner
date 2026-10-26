@@ -15,9 +15,16 @@ function checkPlan() {
 
   // Each shared DS port is reported once, not once per home on it.
   const clashed = new Set();
+  const tails = new Set(plan.points.flatMap((loc) => (loc.equipment || []).map((eq) => eq.tail)).filter(Boolean));
   for (const p of plan.points) {
     const out = childCables(p.id);
     const arriving = incomingCable(p.id);
+
+    // Equipment tails feed their own equipment; other ends share one feeder.
+    const ends = plan.cables.filter((c) => c.to === p.id && !nextSpan(c));
+    if (ends.length > 1 && ends.some((c) => !tails.has(cableStart(c).id))) {
+      problem(p.id, `${ends.length} cables end at ${p.name}; only ${arriving.name} feeds its splices.`);
+    }
 
     // Dead ends: a cable runs to a location and stops with nothing there.
     if (p.type !== "nid" && p.id !== start.id && arriving && !childPaths(p.id).length && !splittersAt(p).length &&
