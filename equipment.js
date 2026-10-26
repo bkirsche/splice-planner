@@ -15,11 +15,11 @@ function hasCards(eq) {
 
 // --- Tails ---
 // A clamshell splitter, or a terminal in a pedestal, comes with its tail
-// pre-attached, run back to the location feeding it. The tail is a cable
-// of its own on the path in (kind "splitter-tail" or "terminal-tail"),
-// with its length in tailFt; eq.tail points at it. Until it can be drawn
-// (no path in, or the path already has a cable) the length waits in
-// eq.tailFt.
+// pre-attached, run back to where it's spliced: the location feeding it,
+// or one further back, passing through the ones between. The tail is a
+// cable of its own (kind "splitter-tail" or "terminal-tail") with its
+// length in tailFt on its first span; eq.tail points at that span. At
+// the first location (no path in) the length waits in eq.tailFt.
 
 function tailKind(loc, eq) {
   if (eq.type === "splitter" && TEMPLATES.some((t) => t.tails && t.style === eq.style)) return "splitter-tail";
@@ -37,27 +37,63 @@ function tailFeet(eq) {
   return c ? c.tailFt || null : eq.tailFt || null;
 }
 
-// Sets the tail's length, drawing the tail on the path into loc if it
-// isn't there yet. Returns why it couldn't be drawn, or "".
-function setTail(loc, eq, feet) {
-  let c = tailCable(eq);
-  if (!c) {
-    const path = incomingPath(loc.id);
-    const busy = path && pathCable(path);
-    if (!path || busy) {
-      eq.tailFt = feet;
-      delete eq.tail;
-      return busy ? `${busy.name} is already on the path from ${point(path.from).name}, so the tail isn't drawn.` : "";
-    }
-    const kind = tailKind(loc, eq);
-    c = { id: makeId(), name: nextCableName(kind, false), from: path.from, to: loc.id,
-      fibers: eq.type === "terminal" ? cardPorts(eq) || 1 : 1, kind };
-    plan.cables.push(c);
-    eq.tail = c.id;
+// Where a tail fed from fromId can start: there, then on back up the route.
+function tailStarts(fromId) {
+  const out = [];
+  for (let id = fromId; id && !out.includes(id); id = (incomingPath(id) || {}).from) out.push(id);
+  return out;
+}
+
+// "Tail starts at": shown when there's more than one place to start.
+// Returns { el, value() } with the location id.
+function tailStartField(fromId, current) {
+  const ids = fromId ? tailStarts(fromId) : [];
+  const pick = selectEl(ids.map((id, i) => ({ value: id,
+    label: i ? `${point(id).name}, through ${ids.slice(0, i).reverse().map((x) => point(x).name).join(", ")}` : point(id).name })),
+    ids.includes(current) ? current : ids[0]);
+  const box = fieldEl("Tail starts at", pick);
+  box.hidden = ids.length < 2;
+  return { el: box, value: () => pick.value || null };
+}
+
+// Sets the tail's length and where it starts (where it starts now, or
+// the location feeding loc), drawing it along the paths between: the
+// first span starts the tail, the rest pass through.
+function setTail(loc, eq, feet, startId) {
+  const old = tailCable(eq);
+  const into = incomingPath(loc.id);
+  if (!into) {
+    eq.tailFt = feet;
+    delete eq.tail;
+    return;
   }
-  c.tailFt = feet;
+  const start = startId || (old ? old.from : into.from);
+  if (old && old.from === start && cableSpans(old).at(-1).to === loc.id) {
+    old.tailFt = feet;
+    return;
+  }
+  const kind = tailKind(loc, eq);
+  const name = old ? old.name : nextCableName(kind, false);
+  const fibers = old ? old.fibers : eq.type === "terminal" ? cardPorts(eq) || 1 : 1;
+  if (old) removeCableFrom(old);
+  // The paths from start down to loc (just the last one if start isn't
+  // up the route from loc).
+  const chain = [];
+  for (let p = into; p; p = incomingPath(p.from)) {
+    chain.unshift(p);
+    if (p.from === start) break;
+  }
+  if (chain[0].from !== start) chain.splice(0, chain.length - 1);
+  let prev = null;
+  for (const p of chain) {
+    const span = { id: makeId(), name, from: p.from, to: p.to, fibers };
+    if (prev) Object.assign(span, { through: "pass", prev: prev.id });
+    else Object.assign(span, { kind, tailFt: feet });
+    plan.cables.push(span);
+    if (!prev) eq.tail = span.id;
+    prev = span;
+  }
   delete eq.tailFt;
-  return "";
 }
 
 function equipmentLabel(eq) {
@@ -116,7 +152,7 @@ function openEquipment(locId, startKind) {
       }
       if (eq.type === "splitter") {
         // F2: the app's next free fiber (locked), or a fiber picked by hand.
-        const c = incomingCable(p.id);
+        const c = feederAt(p.id, eq);
         const max = c ? c.fibers : 432;
         const opts = [{ value: "", label: "Not set" }];
         for (let n = 1; n <= max; n++) {
@@ -170,14 +206,15 @@ function openEquipment(locId, startKind) {
         }
       }
       if (tailKind(p, eq)) {
-        // The tail's length, changed here at any time. Drawn on the path
-        // in when it can be; "No tail" takes it off.
+        // The tail's length and where it starts, changed here at any
+        // time; "No tail" takes it off.
         const tail = tailLengthField(tailFeet(eq), "No tail");
-        tail.el.addEventListener("change", () => {
+        const into = incomingPath(p.id);
+        const from = tailStartField(into && into.from, tailCable(eq) && tailCable(eq).from);
+        const save = () => {
           const ft = tail.value();
           if (ft === null) return;
-          let problem = "";
-          if (ft) problem = setTail(p, eq, ft);
+          if (ft) setTail(p, eq, ft, from.value());
           else {
             const c = tailCable(eq);
             if (c) removeCableFrom(c);
@@ -187,9 +224,10 @@ function openEquipment(locId, startKind) {
           savePlan();
           renderRoute();
           renderList();
-          if (problem) showNote(problem);
-        });
-        row.append(tail.el);
+        };
+        tail.el.addEventListener("change", save);
+        from.el.addEventListener("change", save);
+        row.append(tail.el, from.el);
       }
       const actions = el("div", "eq-actions");
       if (hasCards(eq)) actions.append(btnEl("Edit cards and ports", () => openCards(locId, eq.id), "btn ghost"));
@@ -230,7 +268,10 @@ function openEquipment(locId, startKind) {
     name.addEventListener("input", () => (nameTouched = true));
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x32");
     const tail = tailLengthField();
-    const tailBox = tail.el;
+    const into = incomingPath(p.id);
+    const tailFrom = tailStartField(into && into.from);
+    const tailBox = el("div");
+    tailBox.append(tail.el, tailFrom.el);
     const qty = inputEl("number", 1, { min: 1, max: 48 });
     const first = inputEl("number", nextFreeF2(p, { id: null }) || "", { min: 1 });
     // New splitters take the next free F2 fibers unless unlocked.
@@ -324,7 +365,6 @@ function openEquipment(locId, startKind) {
 
     function addEquipment() {
       const k = kind.value;
-      let tailProblem = "";
       if (k === "splitter") {
         const planned = plannedF2();
         if (planned.error) return;
@@ -339,7 +379,7 @@ function openEquipment(locId, startKind) {
           const sp = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
             name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null, f2Manual: firstManual };
           p.equipment.push(sp);
-          if (t.tails) tailProblem = setTail(p, sp, tail.value()) || tailProblem;
+          if (t.tails) setTail(p, sp, tail.value(), tailFrom.value());
         }
         first.value = nextFreeF2(p, { id: null }) || "";
       } else if (k === "other") {
@@ -358,12 +398,10 @@ function openEquipment(locId, startKind) {
         }
         const item = fromTemplate(t, name.value.trim() || t.model || EQ_KINDS[k].label);
         p.equipment.push(item);
-        if (!tailBox.hidden) tailProblem = setTail(p, item, tail.value());
+        if (!tailBox.hidden) setTail(p, item, tail.value(), tailFrom.value());
         if (hasCards(item)) {
           savePlan();
-          openCards(locId, item.id);
-          if (tailProblem) showNote(tailProblem);
-          return;
+          return openCards(locId, item.id);
         }
       }
       nameTouched = false;
@@ -371,7 +409,6 @@ function openEquipment(locId, startKind) {
       renderList();
       refresh();
       renderRoute();
-      if (tailProblem) showNote(tailProblem);
     }
 
     foot.append(btnEl("Done", finish, "btn big"));
@@ -382,7 +419,7 @@ function openEquipment(locId, startKind) {
 
 // "Fiber 5 on Cable 1: Blue tube, Slate fiber."
 function f2Hint(loc, eq) {
-  const c = incomingCable(loc.id);
+  const c = feederAt(loc.id, eq);
   if (!c) return `No cable arrives at ${loc.name}, so F2 is just a number here.`;
   const f = colorCode(c.fibers)[eq.f2 - 1];
   if (!f) return "";

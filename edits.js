@@ -30,14 +30,15 @@ function openMove(id) {
     formButtons(foot, () => {
       if (target.value === path.from) return finish();
       path.from = target.value;
-      if (c) {
-        c.from = target.value;
-        delete c.picks;
+      for (const x of pathCables(path)) {
+        x.from = target.value;
+        delete x.picks;
         // A cable that passed through its old spot now starts at the new one.
-        if (c.through) {
-          delete c.through;
+        if (x.through) {
+          delete x.through;
+          delete x.prev;
           const name = nextCableName("cable", p.type === "nid");
-          for (const s of cableSpans(c)) s.name = name;
+          for (const s of cableSpans(x)) s.name = name;
         }
       }
       finish();

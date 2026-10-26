@@ -52,10 +52,13 @@ function buildSpliceModel() {
       const m = point(span.to);
       if (m.type === "nid") items.push(homeItem(m));
       const here = splittersAt(m);
+      // Only the cable feeding a location carries what's made there.
       for (const s of here) {
+        if (feederAt(m.id, s) !== span) continue;
         if (s.f2) fix(s.f2, `split-in:${s.id}`);
         else items.push(`split-in:${s.id}`);
       }
+      if (incomingCable(m.id) !== span) continue;
       for (const d of childCables(m.id).filter((c) => !c.through)) {
         if (d.picks) {
           // Fibers the user picked; anything else on d isn't spliced.
@@ -112,7 +115,8 @@ function buildSpliceModel() {
     for (const span of cableSpans(start)) {
       const m = point(span.to);
       if (m.type === "nid") out.set(homeItem(m), m.name);
-      for (const s of splittersAt(m)) out.set(`split-in:${s.id}`, m.name);
+      for (const s of splittersAt(m)) if (feederAt(m.id, s) === span) out.set(`split-in:${s.id}`, m.name);
+      if (incomingCable(m.id) !== span) continue;
       for (const d of childCables(m.id).filter((c) => !c.through)) {
         const its = d.picks ? childFibers(d).filter((f) => f.in).map((f) => f.item)
           : [...needs(d).fixed.values(), ...needs(d).items];
@@ -190,10 +194,11 @@ function buildSpliceModel() {
     const inMap = c ? assign(cableStart(c)).map : new Map();
     const byItem = new Map([...inMap].map(([n, it]) => [it, n]));
     for (const s of here) {
-      const from = s.f2 && c && s.f2 <= c.fibers ? fiberLabel(cableStart(c), s.f2) : source(L, `split-in:${s.id}`);
+      const sc = feederAt(locId, s);
+      const from = s.f2 && sc && s.f2 <= sc.fibers ? fiberLabel(cableStart(sc), s.f2) : source(L, `split-in:${s.id}`);
       rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: f2Label(s), key: `split:${s.id}:in`,
-        phase: Math.max(phaseIdx(s), c ? phaseIdx(c) : 0),
-        src: s.f2 && c && s.f2 <= c.fibers ? { kind: "fiber", n: s.f2 } : null, dst: { kind: "split", id: s.id } });
+        phase: Math.max(phaseIdx(s), sc ? phaseIdx(sc) : 0),
+        src: s.f2 && sc && s.f2 <= sc.fibers ? { kind: "fiber", n: s.f2 } : null, dst: { kind: "split", id: s.id } });
     }
     for (const d of childCables(locId).filter((x) => !x.through)) {
       for (const f of childFibers(d)) {

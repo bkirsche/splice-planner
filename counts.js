@@ -63,12 +63,12 @@ function homeF2(home) {
 function f2Source(eq) {
   if (!eq.f2) return null;
   const loc = equipmentLocation(eq.id);
-  const arriving = loc && incomingCable(loc.id);
+  const arriving = loc && feederAt(loc.id, eq);
   if (!arriving) return null;
   let cable = cableStart(arriving);
   let n = eq.f2;
   const seen = new Set();
-  while (cableKind(cable) === "terminal-tail" && !seen.has(cable.id)) {
+  while (cableKind(cable) !== "cable" && !seen.has(cable.id)) {
     seen.add(cable.id);
     const up = incomingCable(cable.from);
     if (!up) break;
@@ -135,7 +135,7 @@ function nextFreePort(eq, exceptHomeId) {
 // and can't take a fiber that's picked for another cable.
 function f2Problem(loc, eq, n) {
   if (!Number.isInteger(n) || n < 1) return "Enter a fiber number.";
-  const c = incomingCable(loc.id);
+  const c = feederAt(loc.id, eq);
   if (!c) {
     const clash = splittersAt(loc).find((s) => s.id !== eq.id && s.f2 === n);
     return clash ? `F2 ${n} already feeds ${clash.name}.` : "";
@@ -146,7 +146,7 @@ function f2Problem(loc, eq, n) {
 }
 
 function nextFreeF2(loc, eq, from = 1) {
-  const c = incomingCable(loc.id);
+  const c = feederAt(loc.id, eq);
   const max = c ? c.fibers : 999;
   for (let n = from; n <= max; n++) if (!f2Problem(loc, eq, n)) return n;
   return null;

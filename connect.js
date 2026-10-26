@@ -88,7 +88,9 @@ function connectionsAt(model, locId) {
   const inCable = arriving && cableStart(arriving);
   const here = splittersAt(L);
   for (const s of here) {
-    if (s.f2 && inCable && s.f2 <= inCable.fibers) list.push({ from: `fiber:${inCable.id}:${s.f2}`, to: `split:${s.id}:in`, kind: "split-in", s });
+    const sc = feederAt(locId, s);
+    const sIn = sc && cableStart(sc);
+    if (s.f2 && sIn && s.f2 <= sIn.fibers) list.push({ from: `fiber:${sIn.id}:${s.f2}`, to: `split:${s.id}:in`, kind: "split-in", s });
   }
   const inMap = inCable ? model.assign(inCable).map : new Map();
   const byItem = new Map([...inMap].map(([n, it]) => [it, n]));

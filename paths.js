@@ -45,11 +45,12 @@ function toRanges(pairs) {
 function fixedInUse(cableId, exceptId) {
   const used = new Map();
   for (const p of plan.points) {
+    for (const s of splittersAt(p)) {
+      const sc = feederAt(p.id, s);
+      if (sc && cableStart(sc).id === cableId && s.id !== exceptId && s.f2) used.set(s.f2, `feeds ${s.name} at ${p.name}`);
+    }
     const pc = incomingCable(p.id);
     if (!pc || cableStart(pc).id !== cableId) continue;
-    for (const s of splittersAt(p)) {
-      if (s.id !== exceptId && s.f2) used.set(s.f2, `feeds ${s.name} at ${p.name}`);
-    }
     for (const d of childCables(p.id)) {
       if (d.id === exceptId || d.through || !d.picks) continue;
       for (const pr of expandPicks(d.picks)) used.set(pr.in, `is spliced to ${d.name} #${pr.out} at ${p.name}`);
@@ -432,6 +433,7 @@ function openPath(toId) {
         const stuck = f2Stuck(spans, arriving.fibers);
         if (stuck) return stuck;
         span.through = m;
+        span.prev = arriving.id;
         delete span.picks;
         delete span.kind;
         delete span.tailFt;
@@ -457,10 +459,14 @@ function openPath(toId) {
       const span = c || { id: makeId(), from: from.id, to: to.id };
       const wasThrough = span.through;
       delete span.through;
+      delete span.prev;
       const spans = c ? cableSpans(span) : [span];
       const stuck = f2Stuck(spans, n);
       if (stuck) {
-        if (wasThrough) span.through = wasThrough;
+        if (wasThrough) {
+          span.through = wasThrough;
+          span.prev = arriving.id;
+        }
         return stuck;
       }
       if (!c) plan.cables.push(span);
@@ -629,12 +635,20 @@ function insertStopForm(path) {
         delete after.conduit.footage;
       }
       plan.paths.push(after);
-      if (c) {
-        const span = { id: makeId(), name: c.name, from: stop.id, to: c.to, fibers: c.fibers };
-        if (what.value === "splice") span.name = cableName.value.trim();
-        else span.through = what.value;
+      // Every cable on the path is cut at the new stop. The one picked
+      // here may be spliced; any others pass through.
+      for (const x of pathCables(path)) {
+        const next = nextSpan(x);
+        const span = { id: makeId(), name: x.name, from: stop.id, to: x.to, fibers: x.fibers };
+        if (x === c && what.value === "splice") span.name = cableName.value.trim();
+        else {
+          span.through = x === c ? what.value : "pass";
+          span.prev = x.id;
+        }
         plan.cables.push(span);
-        c.to = stop.id;
+        if (next) next.prev = span.id;
+        x.to = stop.id;
+        if (x !== c) continue;
         // A splice starts a new cable, so the rest of the old run takes its name.
         for (const s of cableSpans(span)) s.name = span.name;
       }

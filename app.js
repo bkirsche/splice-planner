@@ -36,6 +36,13 @@ function migratePlan(p) {
   if (!Array.isArray(p.paths)) p.paths = (p.cables || []).map((c) => ({ id: makeId(), from: c.from, to: c.to }));
   p.unassigned = p.unassigned || [];
   p.xconnects = p.xconnects || [];
+  // Through spans name the span they continue (a path can carry several
+  // cables now). Before, it was the one cable arriving at their start.
+  for (const c of p.cables || []) {
+    if (!c.through || c.prev) continue;
+    const up = p.cables.find((x) => x.to === c.from);
+    if (up) c.prev = up.id;
+  }
   if (typeof migrateCounts === "function") migrateCounts(p);
   // Round 8 kept estimate prices in the plan; the estimate tool is gone.
   delete p.estimate;
@@ -274,24 +281,69 @@ function incomingPath(id) {
   return plan.paths.find((x) => x.to === id);
 }
 
-// The cable span on a path, if one has been placed.
+// A path can carry several cables. Each span with `through` set names
+// the span it continues in `prev`, so two cables can arrive at a
+// location and each carry on along its own path. At most one cable
+// should end at a location: that one feeds it (its splices and
+// equipment); cables passing through aren't spliced there.
+
+// Every cable span on a path.
+function pathCables(path) {
+  return plan.cables.filter((c) => c.to === path.to);
+}
+
+// The cable span on a path that feeds where it goes (see incomingCable).
 function pathCable(path) {
-  return plan.cables.find((c) => c.to === path.to);
+  return incomingCable(path.to);
 }
 
 function childCables(id) {
   return plan.cables.filter((c) => c.from === id);
 }
 
+// The span a through span continues. Spans saved before `prev` existed
+// continue the (only) cable arriving at their start.
+function prevSpan(c) {
+  return c.prev ? plan.cables.find((x) => x.id === c.prev) : plan.cables.find((x) => x.to === c.from);
+}
+
+// The span continuing this one past its end, if the cable goes on.
+function nextSpan(c) {
+  return plan.cables.find((x) => x.through && x.from === c.to && prevSpan(x) === c);
+}
+
+// The cable feeding a location: the one ending there, or else the first
+// to arrive (one passing through with a mid-span splice).
 function incomingCable(id) {
-  return plan.cables.find((c) => c.to === id);
+  const arriving = [];
+  const going = [];
+  for (const c of plan.cables) {
+    if (c.to === id) arriving.push(c);
+    else if (c.from === id && c.through) going.push(c);
+  }
+  if (arriving.length < 2) return arriving[0];
+  return arriving.find((a) => !going.some((x) => prevSpan(x) === a)) || arriving[0];
+}
+
+// The span feeding a splitter or terminal: the end of its own tail, or
+// else the cable feeding its location.
+function feederAt(locId, eq) {
+  const t = eq && eq.tail && plan.cables.find((x) => x.id === eq.tail);
+  const end = t && cableSpans(t).at(-1);
+  return end && end.to === locId ? end : incomingCable(locId);
 }
 
 const THROUGH_LABELS = { pass: "passes through", storage: "slack stored" };
 
 // The first span of the physical cable this span belongs to.
 function cableStart(c) {
-  while (c.through) c = incomingCable(c.from);
+  const seen = new Set();
+  while (c.through && !seen.has(c.id)) {
+    seen.add(c.id);
+    const up = prevSpan(c);
+    if (!up) break;
+    c = up;
+  }
   return c;
 }
 
@@ -299,8 +351,8 @@ function cableStart(c) {
 function cableSpans(c) {
   const spans = [cableStart(c)];
   for (;;) {
-    const next = childCables(spans[spans.length - 1].to).find((x) => x.through);
-    if (!next) return spans;
+    const next = nextSpan(spans[spans.length - 1]);
+    if (!next || spans.includes(next)) return spans;
     spans.push(next);
   }
 }
@@ -877,12 +929,15 @@ function equipFirstForm(type, fromId) {
     const style = selectEl(templatesFor("splitter").map((t) => ({ value: t.id, label: t.label })), type === "pedestal" ? "sp-clamshell" : "sp-bare");
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x8");
     const tail = tailLengthField();
+    const tailFrom = tailStartField(fromId);
+    const splitTail = el("div");
+    splitTail.append(tail.el, tailFrom.el);
     const splitGrid = el("div", "form-grid");
     splitGrid.append(fieldEl("Style", style), fieldEl("Size", ratio));
     const splitBits = el("div");
-    splitBits.append(splitGrid, tail.el);
+    splitBits.append(splitGrid, splitTail);
     const syncTail = () => {
-      tail.el.hidden = !templateById(style.value).tails;
+      splitTail.hidden = !templateById(style.value).tails;
       fillRatios(ratio, templateById(style.value), "1x8");
     };
     style.addEventListener("change", syncTail);
@@ -891,9 +946,10 @@ function equipFirstForm(type, fromId) {
     // Terminal: the model, and in a pedestal its tail.
     const terminal = selectEl(templatesFor("terminal").map((t) => ({ value: t.id, label: t.label, group: t.group })), "mst-8");
     const termTail = tailLengthField();
+    const termFrom = tailStartField(fromId);
     const termBits = el("div");
     termBits.append(fieldEl("Terminal", terminal));
-    if (type === "pedestal") termBits.append(termTail.el);
+    if (type === "pedestal") termBits.append(termTail.el, termFrom.el);
 
     const sync = () => {
       caseBits.hidden = kind.value !== "closure";
@@ -907,6 +963,7 @@ function equipFirstForm(type, fromId) {
       if (!name.value.trim()) return "Enter a name.";
       let eq = null;
       let tailFt = null;
+      let tailStart = null;
       if (kind.value === "closure") {
         const t = templateById(template.value);
         eq = fromTemplate(t, t.model);
@@ -917,13 +974,17 @@ function equipFirstForm(type, fromId) {
         if (t.tails && !tail.value()) return "Enter the custom tail length in feet.";
         eq = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
           name: `Splitter 1 (${ratio.value})`, f2: null, f2Manual: false };
-        if (t.tails) tailFt = tail.value();
+        if (t.tails) {
+          tailFt = tail.value();
+          tailStart = tailFrom.value();
+        }
       } else if (kind.value === "terminal") {
         const t = templateById(terminal.value);
         eq = fromTemplate(t, t.model);
         if (type === "pedestal") {
           if (!termTail.value()) return "Enter the custom tail length in feet.";
           tailFt = termTail.value();
+          tailStart = termFrom.value();
         }
       }
       const extra = eq ? { equipment: [eq] } : {};
@@ -931,9 +992,9 @@ function equipFirstForm(type, fromId) {
         if (tailFt) eq.tailFt = tailFt;
         return void placeStart(type, name.value.trim(), extra);
       }
-      // The tail runs back to the location feeding this one.
+      // The tail runs back to where it's spliced.
       const stop = addLocation(fromId, type, name.value.trim(), extra);
-      if (tailFt) setTail(stop, eq, tailFt);
+      if (tailFt) setTail(stop, eq, tailFt, tailStart);
       finish();
     }, "Add");
     name.select();

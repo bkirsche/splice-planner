@@ -961,16 +961,16 @@ function openFeedPicked() {
       const before = JSON.stringify(plan);
       for (const h of homes) {
         const path = incomingPath(h.id);
-        const c = pathCable(path);
         if (path.from !== loc.id) {
           path.from = loc.id;
-          if (c) {
-            c.from = loc.id;
-            delete c.picks;
-            if (c.through) {
-              delete c.through;
+          for (const x of pathCables(path)) {
+            x.from = loc.id;
+            delete x.picks;
+            if (x.through) {
+              delete x.through;
+              delete x.prev;
               const name = nextCableName("cable", true);
-              for (const s of cableSpans(c)) s.name = name;
+              for (const s of cableSpans(x)) s.name = name;
             }
           }
         }
