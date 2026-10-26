@@ -1102,7 +1102,8 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 .cable-note { white-space: pre-line; }
 
 /* Locks on values the app fills in */
-.lock-field { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.lock-field { display: inline-flex; align-items: center; gap: 6px; flex-wrap: nowrap; max-width: 100%; }
+.lock-field > input, .lock-field > select { flex: 1 1 auto; min-width: 0; }
 .lock-btn {
   display: inline-grid;
   place-items: center;

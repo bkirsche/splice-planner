@@ -1118,7 +1118,9 @@ function renameStop(id) {
     body.append(fieldEl("Name", name));
     formButtons(foot, () => {
       if (!name.value.trim()) return "Enter a name.";
+      const was = p.name;
       p.name = name.value.trim();
+      renameTails(p, was);
       finish();
     });
     name.select();
