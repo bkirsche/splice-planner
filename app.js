@@ -696,7 +696,8 @@ function drawWires(root, z = 1) {
 }
 
 window.addEventListener("resize", () => drawFans());
-if (document.fonts) document.fonts.ready.then(() => drawFans());
+// Waits for the page too: cached fonts can be ready before fold.js loads.
+if (document.fonts) Promise.all([document.fonts.ready, new Promise((r) => window.addEventListener("load", r))]).then(() => drawFans());
 
 // A location card: colored icon tile, type, name, then chips for its
 // equipment and counts.

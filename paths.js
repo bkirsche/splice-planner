@@ -254,9 +254,12 @@ function openPath(toId, cableId) {
     const kind = selectEl(Object.entries(CABLE_KINDS).map(([value, label]) => ({ value, label })), startKind);
     // The name: the app's next "Cable n" (locked), or typed by hand.
     const own = c && !c.through ? c : null;
-    const defaultName = () => (own && (own.kind || "cable") === kind.value && AUTO_CABLE_NAME.test(own.name) ? own.name : nextCableName(kind.value, toHome));
+    // A tail is named after its splitter or terminal.
+    const owner = own && tailOwner(own);
+    const defaultName = () => (owner && (own.kind || "cable") === kind.value ? owner.name
+      : own && (own.kind || "cable") === kind.value && AUTO_CABLE_NAME.test(own.name) ? own.name : nextCableName(kind.value, toHome));
     const name = inputEl("text", own ? own.name : defaultName());
-    let nameManual = !!own && !AUTO_CABLE_NAME.test(own.name);
+    let nameManual = !!own && !AUTO_CABLE_NAME.test(own.name) && !(owner && own.name === owner.name);
     const nameBox = el("div");
     const renderName = () => {
       if (!nameManual) name.value = defaultName();

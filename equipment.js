@@ -32,6 +32,21 @@ function tailCable(eq) {
   return c && cableKind(c) !== "cable" ? c : null;
 }
 
+// The splitter or terminal a tail belongs to. A tail is named after it
+// unless named by hand.
+function tailOwner(c) {
+  const id = cableStart(c).id;
+  for (const p of plan.points) for (const eq of p.equipment || []) if (eq.tail === id) return eq;
+  return null;
+}
+
+// A renamed splitter or terminal takes its tail's name along, if the tail
+// still had the old one.
+function renameTail(eq, oldName) {
+  const c = tailCable(eq);
+  if (c && c.name === oldName) for (const s of cableSpans(c)) s.name = eq.name;
+}
+
 function tailFeet(eq) {
   const c = tailCable(eq);
   return c ? c.tailFt || null : eq.tailFt || null;
@@ -73,7 +88,7 @@ function setTail(loc, eq, feet, startId) {
     return;
   }
   const kind = tailKind(loc, eq);
-  const name = old ? old.name : nextCableName(kind, false);
+  const name = old ? old.name : eq.name;
   const fibers = old ? old.fibers : eq.type === "terminal" ? cardPorts(eq) || 1 : 1;
   if (old) removeCableFrom(old);
   eq.tail = layRun(start, loc.id, { name, fibers, kind, tailFt: feet }).id;
@@ -426,7 +441,9 @@ function openCards(locId, eqId) {
     const name = inputEl("text", eq.name);
     const model = inputEl("text", eq.model || "");
     name.addEventListener("change", () => {
+      const was = eq.name;
       eq.name = name.value.trim() || eq.name;
+      renameTail(eq, was);
       changed();
     });
     model.addEventListener("change", () => {
