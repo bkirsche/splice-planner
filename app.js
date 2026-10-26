@@ -357,6 +357,31 @@ function cableSpans(c) {
   }
 }
 
+// Lay a cable down the route; later spans continue the first one.
+function layRun(startId, toId, fields) {
+  const into = incomingPath(toId);
+  if (!into) return;
+  const chain = [];
+  const seen = new Set();
+  for (let p = into; p && !seen.has(p.id); p = incomingPath(p.from)) {
+    seen.add(p.id);
+    chain.unshift(p);
+    if (p.from === startId) break;
+  }
+  if (chain[0].from !== startId) chain.splice(0, chain.length - 1);
+  let first = null;
+  let prev = null;
+  for (const p of chain) {
+    const span = { id: makeId(), from: p.from, to: p.to };
+    if (prev) Object.assign(span, { name: fields.name, fibers: fields.fibers, through: "pass", prev: prev.id });
+    else Object.assign(span, fields);
+    plan.cables.push(span);
+    if (!first) first = span;
+    prev = span;
+  }
+  return first;
+}
+
 function cableKind(c) {
   return cableStart(c).kind || "cable";
 }

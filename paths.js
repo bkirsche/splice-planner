@@ -136,18 +136,20 @@ let openPathId = null;
 
 function pathEl(path, model) {
   const c = pathCable(path);
+  const cables = pathCables(path);
   const cd = conduitLabel(path.conduit);
   const b = el("button", "cable" + (c ? "" : " empty") + (c && c.through ? " through" : "") +
     (path.conduit && path.conduit.size ? " conduit" : "") + (path.to === openPathId ? " selected" : "") +
     (point(path.to).type === "nid" ? " drop" : "") + (c && phasePast(c) ? " past" : ""));
   b.type = "button";
   b.style.setProperty("--wire", wireColor(c));
-  if (c) {
+  for (const c of cables) {
     const kind = cableKind(c);
-    b.append(el("div", "cable-name", c.name || "Cable"),
-      el("div", "cable-size", `${c.fibers}F` + (c.through ? " · continued" : "") +
-        (kind !== "cable" ? ` · ${CABLE_KINDS[kind]}` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
-    if (!c.through && !isDrop(c) && model) {
+    const size = `${c.fibers}F` + (c.through ? " · continued" : "") +
+      (kind !== "cable" ? ` · ${CABLE_KINDS[kind]}` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "");
+    if (cables.length > 1) b.append(el("div", "cable-name", `${c.name || "Cable"} · ${size}`));
+    else b.append(el("div", "cable-name", c.name || "Cable"), el("div", "cable-size", size));
+    if (cables.length === 1 && !c.through && !isDrop(c) && model) {
       const note = cableNote(model, c, false);
       if (note) {
         const n = el("div", "cable-note", note);
@@ -155,12 +157,13 @@ function pathEl(path, model) {
         b.append(n);
       }
     }
-  } else {
+  }
+  if (!c) {
     b.append(el("div", "cable-name muted", "No cable"));
   }
   b.append(el("div", "line"));
   if (cd) b.append(el("div", "conduit-label", cd));
-  if (c) {
+  for (const c of cables) {
     const tubes = el("div", "tubes");
     for (let t = 0; t < tubeCount(c.fibers); t++) tubes.append(swatch(colorAt(t), true));
     b.append(tubes);
@@ -175,15 +178,15 @@ function pathEl(path, model) {
 // and its color code. Nothing to change.
 function openPathView(toId) {
   const path = incomingPath(toId);
-  const c = pathCable(path);
+  const cables = pathCables(path);
   const model = buildSpliceModel();
   openForm(`${point(path.from).name} → ${point(path.to).name}`, (body, foot) => {
     const cd = conduitLabel(path.conduit);
     if (cd) body.append(el("p", "", `Conduit: ${cd}`));
-    if (!c) body.append(el("p", "hint", "No cable on this path."));
-    else {
+    if (!cables.length) body.append(el("p", "hint", "No cable on this path."));
+    for (const c of cables) {
       body.append(el("p", "cable-annotation", [c.name, `${c.fibers}F`, cableKindText(c), c.through ? THROUGH_LABELS[c.through] : ""].filter(Boolean).join(" · ")));
-      if (!isDrop(c)) body.append(el("h4", "form-section", "Fiber use"), fiberUseList(model, cableStart(c)));
+      body.append(el("h4", "form-section", "Fiber use"), fiberUseList(model, cableStart(c)));
       body.append(el("h4", "form-section", "Color code"), colorCodeList(c.fibers));
     }
     foot.append(btnEl("Close", finish, "btn big"));
@@ -192,16 +195,16 @@ function openPathView(toId) {
   renderRoute();
 }
 
-function openPath(toId) {
+function openPath(toId, cableId) {
   if (isGuest()) return openPathView(toId);
   const path = incomingPath(toId);
   const from = point(path.from);
   const to = point(path.to);
-  const c = pathCable(path);
-  const arriving = incomingCable(from.id);
-  const inCable = arriving && cableStart(arriving);
-  // The arriving cable can carry on along only one path out of a location.
-  const continuesElsewhere = arriving && childCables(from.id).some((x) => x.through && x !== c);
+  const cables = pathCables(path);
+  const c = cableId === "new" ? null : cableId ? cables.find((x) => x.id === cableId) : pathCable(path);
+  const arriving = plan.cables.filter((x) => x.to === from.id && (!nextSpan(x) || nextSpan(x) === c));
+  let inCable = incomingCable(from.id);
+  inCable = inCable && cableStart(inCable);
   const toHome = to.type === "nid";
   const model = buildSpliceModel();
 
@@ -219,15 +222,34 @@ function openPath(toId) {
 
     // Cable
     body.append(el("h4", "form-section", "Cable"));
-    const modes = [{ value: "none", label: "No cable" }, { value: "new", label: `Cable starting at ${from.name}` }];
-    if (arriving && !continuesElsewhere) {
-      modes.push({ value: "pass", label: `${arriving.name} passes through ${from.name}` },
-        { value: "storage", label: `${arriving.name}, slack stored at ${from.name}` });
+    if (cables.length >= 2) {
+      const choices = el("div", "form-grid");
+      for (const x of cables) {
+        const button = btnEl(`${x.name} · ${x.fibers}F`, () => openPath(toId, x.id), "btn ghost" + (x === c ? " selected" : ""));
+        button.setAttribute("aria-pressed", String(x === c));
+        if (x === c) button.classList.remove("ghost");
+        choices.append(button);
+      }
+      choices.append(btnEl("+ Another cable", () => openPath(toId, "new"), "btn ghost"));
+      body.append(choices);
     }
-    const mode = selectEl(modes, c ? c.through || "new" : "none");
+    const modes = [{ value: "none", label: "No cable" }, { value: "new", label: `Cable starting at ${from.name}` }];
+    for (const x of arriving) {
+      modes.push({ value: `pass:${x.id}`, label: `${x.name} passes through ${from.name}` },
+        { value: `storage:${x.id}`, label: `${x.name}, slack stored at ${from.name}` });
+    }
+    const mode = selectEl(modes, c && c.through ? `${c.through}:${prevSpan(c).id}` : c || cableId === "new" ? "new" : "none");
+    if (c && c.through) {
+      const start = cableStart(c);
+      body.append(el("p", "hint", `Part of ${start.name}, from ${point(start.from).name}, passes through here`),
+        btnEl(`Edit ${start.name}`, () => openPath(start.to, start.id), "btn ghost"));
+    }
     body.append(fieldEl("On this path", mode));
 
     const newBox = el("div", "form-grid");
+    const starts = tailStartField(from.id);
+    starts.el.querySelector(".field-label").textContent = "Starts at";
+    if (!c) newBox.append(starts.el);
     const startKind = c && !c.through ? c.kind || "cable" : "cable";
     const kind = selectEl(Object.entries(CABLE_KINDS).map(([value, label]) => ({ value, label })), startKind);
     // The name: the app's next "Cable n" (locked), or typed by hand.
@@ -282,17 +304,21 @@ function openPath(toId) {
         renderPickLock();
         renderRanges();
       }, "the fibers"));
-    if (inCable) {
+    function renderPicker() {
+      pickBox.replaceChildren();
+      if (!inCable) return;
       renderPickLock();
-      pickBox.append(el("h4", "form-section", `Fibers spliced from ${inCable.name} at ${from.name}`),
+      const start = c ? from.id : starts.value();
+      pickBox.append(el("h4", "form-section", `Fibers spliced from ${inCable.name} at ${point(start).name}`),
         fieldEl("Fibers", pickLock), rangesEl);
-      fibers.addEventListener("change", () => {
-        if (pickMode.value === "pick" && !rangesTouched) {
-          ranges = suggestPicks(model, c, inCable, parseInt(fibers.value, 10));
-          renderRanges();
-        }
-      });
     }
+    renderPicker();
+    fibers.addEventListener("change", () => {
+      if (inCable && pickMode.value === "pick" && !rangesTouched) {
+        ranges = suggestPicks(model, c, inCable, parseInt(fibers.value, 10));
+        renderRanges();
+      }
+    });
     let rangesTouched = !!ranges;
 
     function renderRanges() {
@@ -364,10 +390,20 @@ function openPath(toId) {
       const m = mode.value;
       newBox.hidden = m !== "new";
       pickBox.hidden = m !== "new" || !inCable;
-      contNote.hidden = m !== "pass" && m !== "storage";
-      if (!contNote.hidden) contNote.textContent = `Same cable as ${arriving.name}: ${arriving.fibers}F, no splicing at ${from.name}.`;
+      const continued = arriving.find((x) => x.id === m.split(":")[1]);
+      contNote.hidden = !continued;
+      if (!contNote.hidden) contNote.textContent = `Same cable as ${continued.name}: ${continued.fibers}F, no splicing at ${from.name}.`;
       if (m === "new" && inCable) renderRanges();
     }
+    starts.el.addEventListener("change", () => {
+      if (c) return;
+      const incoming = incomingCable(starts.value());
+      inCable = incoming && cableStart(incoming);
+      ranges = null;
+      rangesTouched = false;
+      renderPicker();
+      refresh();
+    });
     mode.addEventListener("change", refresh);
     name.addEventListener("change", () => pickMode.value === "pick" && renderRanges());
 
@@ -397,8 +433,6 @@ function openPath(toId) {
       const removing = c && mode.value === "none" ? removeCableText(c) : null;
       const problem = saveCable();
       if (problem) return problem;
-      const placed = pathCable(path);
-      if (phaseSel && placed) placed.phase = phaseSel.value;
       saveConduit();
       finish();
       if (removing) offerUndo(removing, before);
@@ -422,17 +456,14 @@ function openPath(toId) {
         if (c) removeCableFrom(c);
         return "";
       }
-      if (m === "pass" || m === "storage") {
-        if (c && c.through) {
-          c.through = m;
-          return "";
-        }
+      if (m.startsWith("pass:") || m.startsWith("storage:")) {
+        const arriving = plan.cables.find((x) => x.id === m.split(":")[1]);
         const span = c || { id: makeId(), from: from.id, to: to.id };
         // Everything this cable ran on to now belongs to the arriving cable.
         const spans = c ? cableSpans(c) : [span];
         const stuck = f2Stuck(spans, arriving.fibers);
         if (stuck) return stuck;
-        span.through = m;
+        span.through = m.split(":")[0];
         span.prev = arriving.id;
         delete span.picks;
         delete span.kind;
@@ -456,20 +487,16 @@ function openPath(toId) {
         if (problem) return problem;
         picks = ranges.map((r) => ({ ...r }));
       }
-      const span = c || { id: makeId(), from: from.id, to: to.id };
-      const wasThrough = span.through;
-      delete span.through;
-      delete span.prev;
-      const spans = c ? cableSpans(span) : [span];
-      const stuck = f2Stuck(spans, n);
-      if (stuck) {
-        if (wasThrough) {
-          span.through = wasThrough;
-          span.prev = arriving.id;
-        }
-        return stuck;
+      // A span that passed through now starts a cable of its own here.
+      const spans = c ? (c.through ? cableRunFrom(c) : cableSpans(c)) : [];
+      const stuck = f2Stuck(c ? spans : [{ to: to.id }], n);
+      if (stuck) return stuck;
+      if (c) {
+        delete c.through;
+        delete c.prev;
       }
-      if (!c) plan.cables.push(span);
+      const span = c || layRun(starts.value(), to.id, { name: cableName, fibers: n });
+      if (!c) spans.push(...cableSpans(span));
       for (const s of spans) {
         s.name = cableName;
         s.fibers = n;
@@ -480,6 +507,7 @@ function openPath(toId) {
       else span.kind = kind.value;
       if (tailFt) span.tailFt = tailFt;
       else delete span.tailFt;
+      if (phaseSel) span.phase = phaseSel.value;
       if (picks) span.picks = picks;
       else delete span.picks;
       return "";
@@ -587,9 +615,9 @@ function openLineMenu(toId, e) {
   if (isGuest()) return openPath(toId);
   e.stopPropagation();
   const path = incomingPath(toId);
-  const c = pathCable(path);
   openPopup(`${point(path.from).name} → ${point(path.to).name}`, [
-    { icon: "edit", label: c ? `Cable ${c.name}` : "Path and cable", run: () => openPath(toId) },
+    ...pathCables(path).map((c) => ({ icon: "edit", label: `Cable ${c.name}`, run: () => openPath(toId, c.id) })),
+    { icon: "add", label: "Add a cable", run: () => openPath(toId, "new") },
     { icon: "handhole", label: "Insert a pass-through handhole", run: () => insertStopForm(path) },
   ], e);
 }

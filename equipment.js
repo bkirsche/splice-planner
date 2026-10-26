@@ -76,23 +76,7 @@ function setTail(loc, eq, feet, startId) {
   const name = old ? old.name : nextCableName(kind, false);
   const fibers = old ? old.fibers : eq.type === "terminal" ? cardPorts(eq) || 1 : 1;
   if (old) removeCableFrom(old);
-  // The paths from start down to loc (just the last one if start isn't
-  // up the route from loc).
-  const chain = [];
-  for (let p = into; p; p = incomingPath(p.from)) {
-    chain.unshift(p);
-    if (p.from === start) break;
-  }
-  if (chain[0].from !== start) chain.splice(0, chain.length - 1);
-  let prev = null;
-  for (const p of chain) {
-    const span = { id: makeId(), name, from: p.from, to: p.to, fibers };
-    if (prev) Object.assign(span, { through: "pass", prev: prev.id });
-    else Object.assign(span, { kind, tailFt: feet });
-    plan.cables.push(span);
-    if (!prev) eq.tail = span.id;
-    prev = span;
-  }
+  eq.tail = layRun(start, loc.id, { name, fibers, kind, tailFt: feet }).id;
   delete eq.tailFt;
 }
 
