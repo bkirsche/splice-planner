@@ -233,7 +233,7 @@ function openPath(toId, cableId) {
       choices.append(btnEl("+ Another cable", () => openPath(toId, "new"), "btn ghost"));
       body.append(choices);
     }
-    const modes = [{ value: "none", label: "No cable" }, { value: "new", label: `Cable starting at ${from.name}` }];
+    const modes = [{ value: "none", label: "No cable" }, { value: "new", label: "New cable" }];
     for (const x of arriving) {
       modes.push({ value: `pass:${x.id}`, label: `${x.name} passes through ${from.name}` },
         { value: `storage:${x.id}`, label: `${x.name}, slack stored at ${from.name}` });

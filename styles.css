@@ -286,6 +286,7 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 }
 .stop .lot { grid-column: 2; font-size: 0.8rem; color: var(--muted); font-family: var(--mono); }
 .stop .chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.stop .chips .chip { white-space: normal; max-width: 100%; }
 .stop.start { border-color: color-mix(in srgb, var(--c) 45%, var(--border)); }
 .stop.start .type { color: color-mix(in srgb, var(--c) 50%, #fff); }
 

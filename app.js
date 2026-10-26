@@ -724,8 +724,12 @@ function stopEl(p) {
     if (homeDs(p)) chips.append(countChip(homeDs(p)));
   }
   const through = childCables(p.id).filter((x) => x.through);
-  for (const c of through) {
-    chips.append(el("span", "chip through", `${c.name} ${THROUGH_LABELS[c.through]}`));
+  // Several cables passing make one chip, named in its tooltip.
+  if (through.length === 1) chips.append(el("span", "chip through", `${through[0].name} ${THROUGH_LABELS[through[0].through]}`));
+  else if (through.length) {
+    const chip = el("span", "chip through", `${through.length} cables pass through`);
+    chip.title = through.map((c) => `${c.name} ${THROUGH_LABELS[c.through]}`).join(", ");
+    chips.append(chip);
   }
   // A handhole, pedestal and so on with nothing in it: the cable just passes.
   const holds = (p.equipment || []).some((e) => ["closure", "splitter", "terminal"].includes(e.type));
