@@ -309,6 +309,12 @@ function cableKind(c) {
   return cableStart(c).kind || "cable";
 }
 
+// "Splitter tail · 150 ft": the kind, with a tail's length.
+function cableKindText(c) {
+  const ft = cableStart(c).tailFt;
+  return CABLE_KINDS[cableKind(c)] + (ft && cableKind(c) !== "cable" ? ` · ${ft} ft` : "");
+}
+
 // Line colors on the route: cables red, splitter tails blue, terminal
 // tails green. A path with no cable yet is dashed grey.
 const WIRE_COLORS = { cable: "#e5484d", "splitter-tail": "#3e8ef7", "terminal-tail": "#35b27c" };
@@ -481,7 +487,7 @@ function fanEl(paths) {
     label.type = "button";
     label.title = `Drop to ${point(path.to).name}`;
     label.append(el("span", "cable-name" + (c ? "" : " muted"), c ? c.name : "No drop"));
-    if (c) label.append(el("span", "cable-size", `${c.fibers}F` + (c.jumper ? " jumper" : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
+    if (c) label.append(el("span", "cable-size", `${c.fibers}F` + (c.jumper ? " jumper" : "") + (!c.through && c.tailFt && c.kind ? ` · ${c.tailFt} ft` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
     label.addEventListener("click", (e) => {
       e.stopPropagation();
       openPath(path.to);
@@ -882,9 +888,12 @@ function equipFirstForm(type, fromId) {
     style.addEventListener("change", syncTail);
     syncTail();
 
-    // Terminal: the model.
+    // Terminal: the model, and in a pedestal its tail.
     const terminal = selectEl(templatesFor("terminal").map((t) => ({ value: t.id, label: t.label, group: t.group })), "mst-8");
-    const termBits = fieldEl("Terminal", terminal);
+    const termTail = tailLengthField();
+    const termBits = el("div");
+    termBits.append(fieldEl("Terminal", terminal));
+    if (type === "pedestal") termBits.append(termTail.el);
 
     const sync = () => {
       caseBits.hidden = kind.value !== "closure";
@@ -897,6 +906,7 @@ function equipFirstForm(type, fromId) {
     formButtons(foot, () => {
       if (!name.value.trim()) return "Enter a name.";
       let eq = null;
+      let tailFt = null;
       if (kind.value === "closure") {
         const t = templateById(template.value);
         eq = fromTemplate(t, t.model);
@@ -906,14 +916,24 @@ function equipFirstForm(type, fromId) {
         const t = templateById(style.value);
         if (t.tails && !tail.value()) return "Enter the custom tail length in feet.";
         eq = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
-          name: `Splitter 1 (${ratio.value})`, f2: null, f2Manual: false, ...(t.tails ? { tailFt: tail.value() } : {}) };
+          name: `Splitter 1 (${ratio.value})`, f2: null, f2Manual: false };
+        if (t.tails) tailFt = tail.value();
       } else if (kind.value === "terminal") {
         const t = templateById(terminal.value);
         eq = fromTemplate(t, t.model);
+        if (type === "pedestal") {
+          if (!termTail.value()) return "Enter the custom tail length in feet.";
+          tailFt = termTail.value();
+        }
       }
       const extra = eq ? { equipment: [eq] } : {};
-      if (!fromId) return void placeStart(type, name.value.trim(), extra);
-      addLocation(fromId, type, name.value.trim(), extra);
+      if (!fromId) {
+        if (tailFt) eq.tailFt = tailFt;
+        return void placeStart(type, name.value.trim(), extra);
+      }
+      // The tail runs back to the location feeding this one.
+      const stop = addLocation(fromId, type, name.value.trim(), extra);
+      if (tailFt) setTail(stop, eq, tailFt);
       finish();
     }, "Add");
     name.select();

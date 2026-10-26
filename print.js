@@ -479,7 +479,7 @@ function cableTable(model) {
     }
     tr.append(
       el("td", "strong", c.name),
-      el("td", "", CABLE_KINDS[cableKind(c)]),
+      el("td", "", cableKindText(c)),
       el("td", "", `${c.fibers}F`),
       el("td", "", point(spans[0].from).name),
       el("td", "", point(spans[spans.length - 1].to).name),

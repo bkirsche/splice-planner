@@ -13,6 +13,53 @@ function hasCards(eq) {
   return Array.isArray(eq.cards);
 }
 
+// --- Tails ---
+// A clamshell splitter, or a terminal in a pedestal, comes with its tail
+// pre-attached, run back to the location feeding it. The tail is a cable
+// of its own on the path in (kind "splitter-tail" or "terminal-tail"),
+// with its length in tailFt; eq.tail points at it. Until it can be drawn
+// (no path in, or the path already has a cable) the length waits in
+// eq.tailFt.
+
+function tailKind(loc, eq) {
+  if (eq.type === "splitter" && TEMPLATES.some((t) => t.tails && t.style === eq.style)) return "splitter-tail";
+  if (eq.type === "terminal" && loc.type === "pedestal") return "terminal-tail";
+  return null;
+}
+
+function tailCable(eq) {
+  const c = eq.tail && plan.cables.find((x) => x.id === eq.tail);
+  return c && cableKind(c) !== "cable" ? c : null;
+}
+
+function tailFeet(eq) {
+  const c = tailCable(eq);
+  return c ? c.tailFt || null : eq.tailFt || null;
+}
+
+// Sets the tail's length, drawing the tail on the path into loc if it
+// isn't there yet. Returns why it couldn't be drawn, or "".
+function setTail(loc, eq, feet) {
+  let c = tailCable(eq);
+  if (!c) {
+    const path = incomingPath(loc.id);
+    const busy = path && pathCable(path);
+    if (!path || busy) {
+      eq.tailFt = feet;
+      delete eq.tail;
+      return busy ? `${busy.name} is already on the path from ${point(path.from).name}, so the tail isn't drawn.` : "";
+    }
+    const kind = tailKind(loc, eq);
+    c = { id: makeId(), name: nextCableName(kind, false), from: path.from, to: loc.id,
+      fibers: eq.type === "terminal" ? cardPorts(eq) || 1 : 1, kind };
+    plan.cables.push(c);
+    eq.tail = c.id;
+  }
+  c.tailFt = feet;
+  delete eq.tailFt;
+  return "";
+}
+
 function equipmentLabel(eq) {
   if (eq.type === "splitter") return eq.f2 ? `${eq.name} · ${f2Label(eq)}` : eq.name;
   if (hasCards(eq)) {
@@ -24,8 +71,9 @@ function equipmentLabel(eq) {
 
 // Short form for the chips on a location card.
 function equipmentChip(eq) {
-  if (eq.type === "splitter") return `${eq.ratio}${eq.tailFt ? ` · ${eq.tailFt}ft tail` : ""}${eq.f2 ? ` · ${f2Label(eq)}` : ""}`;
-  if (hasCards(eq)) return `${eq.name} · ${cardPorts(eq)}p`;
+  const tail = tailFeet(eq) ? ` · ${tailFeet(eq)}ft tail` : "";
+  if (eq.type === "splitter") return `${eq.ratio}${tail}${eq.f2 ? ` · ${f2Label(eq)}` : ""}`;
+  if (hasCards(eq)) return `${eq.name} · ${cardPorts(eq)}p${tail}`;
   if (eq.type === "closure") return `${eq.name} · ${eq.trays * eq.slots}sp`;
   return eq.name;
 }
@@ -51,7 +99,7 @@ function openEquipment(locId, startKind) {
       const pic = el("span", "eq-icon");
       pic.append(iconEl((EQ_KINDS[eq.type] || EQ_KINDS.other).icon));
       const title = el("div", "eq-name", eq.name);
-      const sub = el("div", "eq-meta", [eq.model, eq.style, eq.type === "splitter" ? eq.ratio : "", eq.tailFt ? `${eq.tailFt} ft tail` : ""].filter(Boolean).join(" · "));
+      const sub = el("div", "eq-meta", [eq.model, eq.style, eq.type === "splitter" ? eq.ratio : "", tailFeet(eq) ? `${tailFeet(eq)} ft tail` : ""].filter(Boolean).join(" · "));
       const text = el("div", "eq-text");
       text.append(title, sub);
       row.append(pic, text);
@@ -121,6 +169,28 @@ function openEquipment(locId, startKind) {
           row.append(el("span", "field-hint warn", `${eq.trays * eq.slots} splices is over the ${eq.max} this case holds.`));
         }
       }
+      if (tailKind(p, eq)) {
+        // The tail's length, changed here at any time. Drawn on the path
+        // in when it can be; "No tail" takes it off.
+        const tail = tailLengthField(tailFeet(eq), "No tail");
+        tail.el.addEventListener("change", () => {
+          const ft = tail.value();
+          if (ft === null) return;
+          let problem = "";
+          if (ft) problem = setTail(p, eq, ft);
+          else {
+            const c = tailCable(eq);
+            if (c) removeCableFrom(c);
+            delete eq.tail;
+            delete eq.tailFt;
+          }
+          savePlan();
+          renderRoute();
+          renderList();
+          if (problem) showNote(problem);
+        });
+        row.append(tail.el);
+      }
       const actions = el("div", "eq-actions");
       if (hasCards(eq)) actions.append(btnEl("Edit cards and ports", () => openCards(locId, eq.id), "btn ghost"));
       if (eq.type === "closure") actions.append(btnEl("Open splice case", () => openConnections(locId), "btn ghost"));
@@ -128,6 +198,9 @@ function openEquipment(locId, startKind) {
         const onIt = plan.points.filter((h) => h.ds && h.ds.splitterId === eq.id);
         withUndo(`Removed ${eq.name}` + (onIt.length ? `. ${onIt.length} home${onIt.length === 1 ? " is" : "s are"} back on automatic counts.` : "."), () => {
           p.equipment = p.equipment.filter((x) => x.id !== eq.id);
+          // Its tail comes out with it.
+          const tail = tailCable(eq);
+          if (tail) removeCableFrom(tail);
           for (const h of onIt) {
             delete h.ds;
             h.dsManual = false;
@@ -194,6 +267,7 @@ function openEquipment(locId, startKind) {
         renderFirst();
       } else {
         fields.append(fieldEl("Name", name));
+        if (k === "terminal") fields.append(tailBox);
         nameTouched = false;
       }
       fields.append(note, addError, add);
@@ -225,7 +299,7 @@ function openEquipment(locId, startKind) {
       addError.hidden = true;
       const k = kind.value;
       const t = tmpl();
-      tailBox.hidden = !(k === "splitter" && t && t.tails);
+      tailBox.hidden = !(k === "splitter" ? t && t.tails : k === "terminal" && p.type === "pedestal");
       if (k === "splitter") fillRatios(ratio, t, t && t.ratios ? "1x8" : "1x32");
       picBox.replaceChildren(hardwarePicture(k, t));
       if (t && t.kind === k && !nameTouched && k !== "splitter") name.value = t.model || EQ_KINDS[k].label;
@@ -250,6 +324,7 @@ function openEquipment(locId, startKind) {
 
     function addEquipment() {
       const k = kind.value;
+      let tailProblem = "";
       if (k === "splitter") {
         const planned = plannedF2();
         if (planned.error) return;
@@ -261,9 +336,10 @@ function openEquipment(locId, startKind) {
         }
         let n = splittersAt(p).length;
         for (let i = 0; i < planned.n; i++) {
-          p.equipment.push({ id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
-            name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null, f2Manual: firstManual,
-            ...(t.tails ? { tailFt: tail.value() } : {}) });
+          const sp = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
+            name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null, f2Manual: firstManual };
+          p.equipment.push(sp);
+          if (t.tails) tailProblem = setTail(p, sp, tail.value()) || tailProblem;
         }
         first.value = nextFreeF2(p, { id: null }) || "";
       } else if (k === "other") {
@@ -275,11 +351,19 @@ function openEquipment(locId, startKind) {
         p.equipment.push({ id: makeId(), type: "other", name: name.value.trim() });
       } else {
         const t = tmpl();
+        if (!tailBox.hidden && !tail.value()) {
+          addError.textContent = "Enter the custom tail length in feet.";
+          addError.hidden = false;
+          return;
+        }
         const item = fromTemplate(t, name.value.trim() || t.model || EQ_KINDS[k].label);
         p.equipment.push(item);
+        if (!tailBox.hidden) tailProblem = setTail(p, item, tail.value());
         if (hasCards(item)) {
           savePlan();
-          return openCards(locId, item.id);
+          openCards(locId, item.id);
+          if (tailProblem) showNote(tailProblem);
+          return;
         }
       }
       nameTouched = false;
@@ -287,6 +371,7 @@ function openEquipment(locId, startKind) {
       renderList();
       refresh();
       renderRoute();
+      if (tailProblem) showNote(tailProblem);
     }
 
     foot.append(btnEl("Done", finish, "btn big"));

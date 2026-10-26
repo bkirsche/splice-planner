@@ -181,7 +181,7 @@ function openPathView(toId) {
     if (cd) body.append(el("p", "", `Conduit: ${cd}`));
     if (!c) body.append(el("p", "hint", "No cable on this path."));
     else {
-      body.append(el("p", "cable-annotation", [c.name, `${c.fibers}F`, CABLE_KINDS[cableKind(c)], c.through ? THROUGH_LABELS[c.through] : ""].filter(Boolean).join(" · ")));
+      body.append(el("p", "cable-annotation", [c.name, `${c.fibers}F`, cableKindText(c), c.through ? THROUGH_LABELS[c.through] : ""].filter(Boolean).join(" · ")));
       if (!isDrop(c)) body.append(el("h4", "form-section", "Fiber use"), fiberUseList(model, cableStart(c)));
       body.append(el("h4", "form-section", "Color code"), colorCodeList(c.fibers));
     }
@@ -253,7 +253,12 @@ function openPath(toId) {
     if (jumperOk || (c && c.jumper)) sizeOpts.splice(1, 0, { value: "1j", label: "1F Jumper" });
     const fibers = selectEl(sizeOpts,
       c && !c.through ? (c.jumper ? "1j" : c.fibers) : toHome ? 1 : 12);
-    newBox.append(fieldEl("Type", kind), fieldEl("Name", nameBox), fieldEl("Size", fibers));
+    // A tail's length: stock, or custom when no stock tail reaches.
+    const tail = tailLengthField(own && own.tailFt, "Not set");
+    const syncTail = () => (tail.el.hidden = kind.value === "cable");
+    kind.addEventListener("change", syncTail);
+    syncTail();
+    newBox.append(fieldEl("Type", kind), fieldEl("Name", nameBox), fieldEl("Size", fibers), tail.el);
     const phaseSel = phaseSelect(c);
     if (phaseSel) newBox.append(fieldEl("Phase", phaseSel));
     body.append(newBox);
@@ -429,6 +434,7 @@ function openPath(toId) {
         span.through = m;
         delete span.picks;
         delete span.kind;
+        delete span.tailFt;
         if (!c) plan.cables.push(span);
         for (const s of spans) {
           s.name = arriving.name;
@@ -439,6 +445,8 @@ function openPath(toId) {
       // A cable starting here.
       const cableName = nameManual ? name.value.trim() : defaultName();
       if (!cableName) return "Name the cable.";
+      const tailFt = kind.value === "cable" ? 0 : tail.value();
+      if (tailFt === null) return "Enter the custom tail length in feet.";
       const n = parseInt(fibers.value, 10);
       let picks = null;
       if (inCable && pickMode.value === "pick") {
@@ -464,6 +472,8 @@ function openPath(toId) {
       }
       if (kind.value === "cable") delete span.kind;
       else span.kind = kind.value;
+      if (tailFt) span.tailFt = tailFt;
+      else delete span.tailFt;
       if (picks) span.picks = picks;
       else delete span.picks;
       return "";

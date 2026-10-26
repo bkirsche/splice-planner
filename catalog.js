@@ -147,12 +147,15 @@ function fillRatios(select, t, fallback) {
 
 const TAIL_LENGTHS = [75, 100, 150, 250, 300, 400, 500, 700, 1000];
 
-// Tail length: a stock length, or "Custom" for a number of your own.
-// Returns { el, value() } where value() is feet, or null if not valid.
-function tailLengthField(feet) {
+// Tail length: a stock length, or "Custom" for a number of your own
+// (when no stock tail reaches). `none` labels an extra choice for no
+// length ("No tail"). Returns { el, value() } where value() is feet, 0
+// for that choice, or null if not valid.
+function tailLengthField(feet, none) {
   const stock = !feet || TAIL_LENGTHS.includes(feet);
-  const pick = selectEl([...TAIL_LENGTHS.map((n) => ({ value: n, label: `${n} ft` })), { value: "custom", label: "Custom…" }],
-    stock ? String(feet || 150) : "custom");
+  const opts = [...TAIL_LENGTHS.map((n) => ({ value: n, label: `${n} ft` })), { value: "custom", label: "Custom…" }];
+  if (none) opts.unshift({ value: "none", label: none });
+  const pick = selectEl(opts, stock ? (feet ? String(feet) : none ? "none" : "150") : "custom");
   const custom = inputEl("number", stock ? "" : feet, { min: 1, max: 5000, placeholder: "ft" });
   const box = el("div", "inline-fields");
   box.append(pick, custom);
@@ -162,6 +165,7 @@ function tailLengthField(feet) {
   return {
     el: fieldEl("Tail length", box),
     value: () => {
+      if (pick.value === "none") return 0;
       const n = pick.value === "custom" ? Math.round(Number(custom.value)) : Number(pick.value);
       return n > 0 ? n : null;
     },

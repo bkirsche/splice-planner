@@ -38,7 +38,7 @@ function renderTable() {
     name.append(iconEl((LOC_META[L.type] || {}).icon || "pin"), document.createTextNode(L.name));
     const bits = [typeLabel(L.type)];
     const c = incomingCable(L.id);
-    if (c) bits.push(`${c.name} · ${c.fibers}F${cableKind(c) !== "cable" ? ` ${CABLE_KINDS[cableKind(c)].toLowerCase()}` : ""} from ${point(c.from).name}`);
+    if (c) bits.push(`${c.name} · ${c.fibers}F${cableKind(c) !== "cable" ? ` ${cableKindText(c).toLowerCase()}` : ""} from ${point(c.from).name}`);
     else if (L.id !== plan.points[0].id) bits.push(`from ${point(incomingPath(L.id).from).name}, no cable`);
     for (const s of splittersAt(L)) bits.push(`${s.name} ${s.ratio} · ${f2Label(s)}`);
     if (homes.length) bits.push(plural(homes.length, "home"));
