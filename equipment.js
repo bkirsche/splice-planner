@@ -130,7 +130,9 @@ function tailStartField(fromId, current, toId, inside, overPath) {
 // Sets the tail's length and where it starts (where it starts now, or
 // the location feeding loc), drawing it along the paths between: the
 // first span starts the tail, the rest pass through.
-function setTail(loc, eq, feet, startId) {
+// A new tail is spliced by hand only unless `auto`; a tail laid again
+// keeps how the old one was spliced.
+function setTail(loc, eq, feet, startId, auto = false) {
   const old = tailCable(eq);
   if (startId === loc.id || startId === "here") {
     if (old) removeCableFrom(old);
@@ -154,8 +156,11 @@ function setTail(loc, eq, feet, startId) {
   const kind = tailKind(loc, eq);
   const name = old ? old.name : loc.name;
   const fibers = old ? old.fibers : eq.type === "terminal" ? cardPorts(eq) || 1 : 1;
+  const byHand = old ? !!old.handOnly : !auto;
   if (old) removeCableFrom(old);
-  eq.tail = layRun(start, loc.id, { name, fibers, kind, tailFt: feet }).id;
+  const run = layRun(start, loc.id, { name, fibers, kind, tailFt: feet });
+  if (byHand) spliceByHand(run);
+  eq.tail = run.id;
   delete eq.tailFt;
 }
 
@@ -234,6 +239,8 @@ function openEquipment(locId, startKind) {
         const f2Row = el("span", "inline-field");
         f2Row.append(el("span", "", "F2"), lockField(!eq.f2Manual, view, sel, (lock) => {
           eq.f2Manual = !lock;
+          // Locked back to automatic: the app splices it from now on.
+          if (lock) delete eq.handOnly;
           savePlan();
           renderRoute();
           renderList();
@@ -344,6 +351,8 @@ function openEquipment(locId, startKind) {
     let firstManual = false;
     const firstBox = el("div");
     const note = el("p", "hint");
+    const autoSplice = autoSpliceBox();
+    autoSplice.box.addEventListener("change", () => refresh());
     const addError = el("p", "error");
     addError.hidden = true;
     const add = btnEl("Add", addEquipment, "btn");
@@ -370,11 +379,11 @@ function openEquipment(locId, startKind) {
       if (k === "splitter") {
         const g = el("div", "form-grid");
         g.append(fieldEl("Size", ratio), fieldEl("How many", qty), fieldEl("First F2", firstBox));
-        fields.append(g, tailBox);
+        fields.append(g, tailBox, autoSplice.row);
         renderFirst();
       } else {
         fields.append(fieldEl("Name", name));
-        if (k === "terminal") fields.append(tailBox);
+        if (k === "terminal") fields.append(tailBox, autoSplice.row);
         nameTouched = false;
       }
       fields.append(note, addError, add);
@@ -416,7 +425,7 @@ function openEquipment(locId, startKind) {
         note.className = planned.error ? "error" : "hint";
         note.textContent = planned.error ? planned.error : planned.list.length
           ? `Adds ${planned.n} x ${ratio.value} on ${planned.list.map(f2Text).join(", ")}.`
-          : firstManual ? `Adds ${planned.n} x ${ratio.value} with no F2 yet.`
+          : firstManual || !autoSplice.box.checked ? `Adds ${planned.n} x ${ratio.value} with no F2 yet. Splice their inputs in the splice case.`
             : `Adds ${planned.n} x ${ratio.value}. Their F2 counts fill in by themselves.`;
       } else if (k === "other") {
         note.textContent = "";
@@ -443,8 +452,9 @@ function openEquipment(locId, startKind) {
         for (let i = 0; i < planned.n; i++) {
           const sp = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
             name: p.name, f2: planned.list[i] || null, f2Manual: firstManual };
+          if (!autoSplice.box.checked) splitterByHand(sp);
           p.equipment.push(sp);
-          if (t.tails) setTail(p, sp, tail.value(), tailFrom.value());
+          if (t.tails) setTail(p, sp, tail.value(), tailFrom.value(), autoSplice.box.checked);
         }
         first.value = nextFreeF2(p, { id: null }) || "";
       } else if (k === "other") {
@@ -463,7 +473,7 @@ function openEquipment(locId, startKind) {
         }
         const item = fromTemplate(t, name.value.trim() || t.model || EQ_KINDS[k].label);
         p.equipment.push(item);
-        if (!tailBox.hidden) setTail(p, item, tail.value(), tailFrom.value());
+        if (!tailBox.hidden) setTail(p, item, tail.value(), tailFrom.value(), autoSplice.box.checked);
         if (hasCards(item)) {
           savePlan();
           return openCards(locId, item.id);

@@ -1143,14 +1143,16 @@ function equipFirstForm(type, fromId) {
     termBits.append(fieldEl("Terminal", terminal));
     if (type === "pedestal") termBits.append(termTail.el, termFrom.el);
 
+    const autoSplice = autoSpliceBox();
     const sync = () => {
       caseBits.hidden = kind.value !== "closure";
       splitBits.hidden = kind.value !== "splitter";
       termBits.hidden = kind.value !== "terminal";
+      autoSplice.row.hidden = kind.value !== "splitter" && kind.value !== "terminal";
     };
     kind.addEventListener("change", sync);
     sync();
-    body.append(fieldEl("Name", name), fieldEl("Put in it", kind), caseBits, splitBits, termBits);
+    body.append(fieldEl("Name", name), fieldEl("Put in it", kind), caseBits, splitBits, termBits, autoSplice.row);
     formButtons(foot, () => {
       if (!name.value.trim()) return "Enter a name.";
       let eq = null;
@@ -1166,6 +1168,7 @@ function equipFirstForm(type, fromId) {
         if (t.tails && !tail.value()) return "Enter the custom tail length in feet.";
         eq = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
           name: name.value.trim(), f2: null, f2Manual: false };
+        if (!autoSplice.box.checked) splitterByHand(eq);
         if (t.tails) {
           tailFt = tail.value();
           tailStart = tailFrom.value();
@@ -1186,7 +1189,7 @@ function equipFirstForm(type, fromId) {
       }
       // The tail runs back to where it's spliced.
       const stop = addLocation(fromId, type, name.value.trim(), extra);
-      if (tailFt) setTail(stop, eq, tailFt, tailStart);
+      if (tailFt) setTail(stop, eq, tailFt, tailStart, autoSplice.box.checked);
       finish();
     }, "Add");
     name.select();
@@ -1204,15 +1207,19 @@ function addHomeForm(fromId) {
     const address = inputEl("text", "", { placeholder: "e.g. 123 Main St" });
     const lot = inputEl("text", "", { placeholder: "e.g. 12" });
     const drop = dropSelect(1);
+    const autoSplice = autoSpliceBox();
     body.append(fieldEl("Address", address, "Leave blank if it doesn't have one yet."),
-      fieldEl("Lot number", lot), fieldEl("Drop cable", drop));
+      fieldEl("Lot number", lot), fieldEl("Drop cable", drop), autoSplice.row);
     formButtons(foot, () => {
       const a = address.value.trim();
       const l = cleanLot(lot.value);
       if (!a && !l) return "Enter an address, a lot number, or both.";
       const stop = addLocation(fromId, "nid", a || lotName(l), l ? { lot: l } : {});
       const fibers = Number(drop.value);
-      if (fibers) plan.cables.push({ id: makeId(), name: nextCableName("cable", true), from: fromId, to: stop.id, fibers });
+      if (fibers) {
+        const drop = { id: makeId(), name: nextCableName("cable", true), from: fromId, to: stop.id, fibers };
+        plan.cables.push(autoSplice.box.checked ? drop : spliceByHand(drop));
+      }
       finish();
     }, "Add");
   });

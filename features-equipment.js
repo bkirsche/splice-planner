@@ -88,7 +88,7 @@ addFeatureType({
       check: (eq, v) => (v === null ? "" : !Number.isInteger(v) || v < 1 ? "F2 is a whole number from 1 up." : f2Problem(equipmentLocation(eq.id), eq, v)),
       set: (eq, v) => {
         eq.f2 = v;
-        eq.f2Manual = v !== null;
+        eq.f2Manual = v !== null || !!eq.handOnly;
       } },
     { key: "used", label: "DS used", get: (eq) => `${usedPorts(eq).size} of ${splitterPorts(eq)}` },
     feTailFeet(),

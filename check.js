@@ -75,6 +75,19 @@ function checkPlan() {
         if (r.inTo > inCable.fibers) problem(p.id, `${d.name} is spliced to ${inCable.name} #${r.inTo}, but ${inCable.name} only has ${inCable.fibers} fibers.`);
         if (r.outFrom + r.inTo - r.inFrom > d.fibers) problem(p.id, `Fibers picked for ${d.name} run past its ${d.fibers} fibers.`);
       }
+      // Placed to be spliced by hand: fibers not joined yet are work to
+      // do, not a mistake. One note per cable.
+      if (d.handOnly) {
+        const open = model.childFibers(d).filter((f) => {
+          const local = splittersAt(p).some((s) => f.item.startsWith(`port:${s.id}:`));
+          return local ? (d.pins || {})[f.out] !== f.item : !f.in;
+        });
+        if (open.length) {
+          warn(p.id, `${d.name} has ${open.length} fiber${open.length === 1 ? "" : "s"} not spliced yet at ${p.name} ` +
+            `(${open.slice(0, 4).map((f) => `#${f.out} ${model.describe(f.item)}`).join(", ")}${open.length > 4 ? ", …" : ""}).`);
+        }
+        continue;
+      }
       for (const f of model.childFibers(d)) {
         const local = splittersAt(p).find((s) => f.item.startsWith(`port:${s.id}:`));
         if (!f.in && !local) {
@@ -135,7 +148,8 @@ function checkPlan() {
     }
 
     for (const s of splittersAt(p)) {
-      if (!s.f2) problem(p.id, `${eqLabel(s)} at ${p.name} has no F2 count.`);
+      if (!s.f2 && s.handOnly) warn(p.id, `${eqLabel(s)} at ${p.name} isn't spliced to a feeder fiber yet.`);
+      else if (!s.f2) problem(p.id, `${eqLabel(s)} at ${p.name} has no F2 count.`);
       else if (arriving && s.f2 > arriving.fibers) {
         problem(p.id, `${eqLabel(s)} at ${p.name} is on F2 ${s.f2}, but ${arriving.name} only has ${arriving.fibers} fibers.`);
       } else if (arriving && f2Problem(p, s, s.f2)) {
@@ -160,6 +174,7 @@ function checkPlan() {
       if (!arriving) warn(p.id, `${p.name} has no drop cable yet.`);
       const s = homeSplitter(p);
       if (!s) warn(p.id, `${p.name} has no splitter feeding it, so it has no F2 count.`);
+      else if (!s.f2 && s.handOnly) warn(p.id, `${p.name} has no F2 count yet: ${eqLabel(s)} isn't spliced to a feeder fiber.`);
       else if (!s.f2) problem(p.id, `${p.name} has no F2 count because ${eqLabel(s)} has none.`);
       if (p.ds) {
         if (!s || p.ds.splitterId !== s.id) problem(p.id, `${p.name} has a DS count on a splitter that no longer feeds it.`);

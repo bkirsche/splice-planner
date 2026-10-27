@@ -450,7 +450,8 @@ function openAssign(fromId) {
     const ds = inputEl("checkbox");
     const dsLabel = el("span");
     dsRow.append(ds, dsLabel);
-    body.append(dsRow);
+    const autoSplice = autoSpliceBox();
+    body.append(dsRow, autoSplice.row);
 
     let go;
     function render() {
@@ -538,7 +539,10 @@ function openAssign(fromId) {
           stop.ds = { splitterId: hit.s.id, port: nextFreePort(hit.s) };
           stop.dsManual = true;
         }
-        if (fibers) plan.cables.push({ id: makeId(), name: nextCableName("cable", true), from: from.value, to: stop.id, fibers });
+        if (fibers) {
+          const d = { id: makeId(), name: nextCableName("cable", true), from: from.value, to: stop.id, fibers };
+          plan.cables.push(autoSplice.box.checked ? d : spliceByHand(d));
+        }
       }
       plan.unassigned = plan.unassigned.filter((x) => !picked.has(x.id));
       finish();

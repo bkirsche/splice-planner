@@ -41,13 +41,20 @@ function feedingLocation(locId) {
 }
 
 // The splitter feeding a home: the one its DS is on, else the first
-// splitter at the nearest upstream location that has one.
+// splitter at the nearest upstream location that has one. A splitter
+// placed to be spliced by hand (handOnly) only takes homes put on it by
+// hand; the app looks further up for one that feeds them by itself.
 function homeSplitter(home) {
   const path = incomingPath(home.id);
-  const loc = path && feedingLocation(path.from);
-  if (!loc) return null;
-  const list = splittersAt(loc);
-  return (home.ds && list.find((s) => s.id === home.ds.splitterId)) || list[0];
+  let loc = path && feedingLocation(path.from);
+  while (loc) {
+    const list = splittersAt(loc);
+    const hit = (home.ds && list.find((s) => s.id === home.ds.splitterId)) || list.find((s) => !s.handOnly);
+    if (hit) return hit;
+    const up = incomingPath(loc.id);
+    loc = up && feedingLocation(up.from);
+  }
+  return null;
 }
 
 function homeF2(home) {
@@ -242,9 +249,10 @@ function autoCounts() {
   for (const h of homes) {
     if (h.dsManual) continue;
     const path = incomingPath(h.id);
-    const loc = path && feedingLocation(path.from);
+    const sp0 = homeSplitter(h);
+    const loc = sp0 && equipmentLocation(sp0.id);
     if (!loc) continue;
-    for (const sp of splittersAt(loc)) {
+    for (const sp of splittersAt(loc).filter((x) => !x.handOnly)) {
       const port = nextFreePort(sp, h.id);
       if (port !== null) {
         h.ds = { splitterId: sp.id, port };

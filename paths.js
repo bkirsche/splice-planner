@@ -40,6 +40,35 @@ function toRanges(pairs) {
   return ranges;
 }
 
+// --- Splicing what's placed ---
+// Placing a cable, tail, drop or splitter never splices anything by
+// itself. It starts spliced by hand only (handOnly): a cable with no
+// fibers picked and no splitter outputs joined, a splitter with no F2.
+// "Splice fibers automatically", unticked by default, lets the app
+// choose instead, as plans did before.
+
+function autoSpliceBox() {
+  const box = inputEl("checkbox");
+  const row = el("label", "check-row");
+  row.append(box, el("span", "", "Splice fibers automatically"));
+  row.title = "Off: nothing is spliced until you join fibers in the splice case. " +
+    "On: the app picks the splices as homes and splitters are added further on.";
+  return { row, box };
+}
+
+function spliceByHand(c) {
+  c.picks = [];
+  c.pins = {};
+  c.handOnly = true;
+  return c;
+}
+
+function splitterByHand(s) {
+  s.f2Manual = true;
+  s.handOnly = true;
+  return s;
+}
+
 // Fibers of a physical cable that are spoken for no matter what the app
 // picks: splitter F2 counts and fiber picks. n -> what uses it.
 function fixedInUse(cableId, exceptId) {
@@ -308,8 +337,11 @@ function openPath(toId, cableId) {
     const pickBox = el("div", "pick-box");
     body.append(pickBox);
     // Locked: the app picks the fibers. Unlocked: ranges and the grid.
-    const pickMode = { value: c && !c.through && c.picks ? "pick" : "auto" };
-    let ranges = c && !c.through && c.picks ? c.picks.map((r) => ({ ...r })) : null;
+    // A cable starting here for the first time starts unlocked with
+    // nothing spliced: placing it never splices by itself.
+    const fresh = !c || !!c.through;
+    const pickMode = { value: fresh || c.picks ? "pick" : "auto" };
+    let ranges = fresh ? [] : c.picks ? c.picks.map((r) => ({ ...r })) : null;
     const rangesEl = el("div", "ranges");
     const pickLock = el("div");
     const renderPickLock = () => pickLock.replaceChildren(lockField(pickMode.value !== "pick",
@@ -415,8 +447,8 @@ function openPath(toId, cableId) {
       renderName();
       const incoming = incomingCable(starts.value());
       inCable = incoming && cableStart(incoming);
-      ranges = null;
-      rangesTouched = false;
+      ranges = [];
+      rangesTouched = true;
       renderPicker();
       refresh();
     });
@@ -527,6 +559,9 @@ function openPath(toId, cableId) {
       if (phaseSel) span.phase = phaseSel.value;
       if (picks) span.picks = picks;
       else delete span.picks;
+      // New here and not set to automatic: spliced by hand only.
+      if (fresh && (picks || !inCable)) Object.assign(span, { picks: picks || [], pins: span.pins || {}, handOnly: true });
+      else if (!picks) delete span.handOnly;
       return "";
     }
   });
@@ -592,7 +627,8 @@ function f2Stuck(spans, fibers) {
 }
 
 function checkPicks(ranges, inCable, outFibers, outName, c) {
-  if (!ranges.length) return "Add at least one range of fibers, or set Fibers to Automatic.";
+  // No ranges: nothing spliced yet.
+  if (!ranges.length) return "";
   const ins = new Set();
   const outs = new Set();
   const others = fixedInUse(inCable.id, c && c.id);
@@ -706,6 +742,7 @@ function insertStopForm(path) {
     body.append(fieldEl("Type", type), fieldEl("Name", name));
     let what = null;
     let cableName = null;
+    const autoSplice = autoSpliceBox();
     if (c) {
       what = selectEl([
         { value: "pass", label: `${c.name} passes through` },
@@ -714,9 +751,9 @@ function insertStopForm(path) {
       ], "pass");
       cableName = inputEl("text", cableNameFor("cable", cableSpans(c).at(-1).to));
       const nameRow = fieldEl("Name of the cable leaving the splice", cableName);
-      const sync = () => (nameRow.hidden = what.value !== "splice");
+      const sync = () => (nameRow.hidden = autoSplice.row.hidden = what.value !== "splice");
       what.addEventListener("change", sync);
-      body.append(fieldEl("At the new stop", what), nameRow);
+      body.append(fieldEl("At the new stop", what), nameRow, autoSplice.row);
       sync();
     }
     formButtons(foot, () => {
@@ -736,8 +773,10 @@ function insertStopForm(path) {
       for (const x of pathCables(path)) {
         const next = nextSpan(x);
         const span = { id: makeId(), name: x.name, from: stop.id, to: x.to, fibers: x.fibers };
-        if (x === c && what.value === "splice") span.name = cableName.value.trim();
-        else {
+        if (x === c && what.value === "splice") {
+          span.name = cableName.value.trim();
+          if (!autoSplice.box.checked) spliceByHand(span);
+        } else {
           span.through = x === c ? what.value : "pass";
           span.prev = x.id;
         }

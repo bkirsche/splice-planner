@@ -98,6 +98,7 @@ function connectionsAt(model, locId) {
     for (const f of model.childFibers(d)) {
       const to = `fiber:${d.id}:${f.out}`;
       const sp = here.find((s) => f.item.startsWith(`port:${s.id}:`));
+      if (sp && d.handOnly && (d.pins || {})[f.out] !== f.item) continue;
       if (sp) {
         const port = f.item.split(":")[2];
         list.push({ from: `split:${sp.id}:${port.startsWith("auto") ? "auto" : port}`, to, kind: "split-out", cable: d, out: f.out });
@@ -156,6 +157,8 @@ function freezeAt(model, locId) {
   for (const d of childCables(locId).filter((x) => !x.through)) {
     if (!d.picks) d.picks = toRanges(model.autoPairs(d));
     d.pins = d.pins || {};
+    // Spliced by hand only: nothing the app placed counts as joined.
+    if (d.handOnly) continue;
     for (const [n, it] of model.assign(d).map) {
       if (here.some((s) => it.startsWith(`port:${s.id}:`)) && !it.includes(":auto-")) d.pins[n] = it;
     }
@@ -236,6 +239,10 @@ function connect(locId, from, to) {
     s.f2Manual = true;
   } else if (fk === "split" && fsub !== "in" && fsub !== "auto" && outgoing) {
     d.pins[tsub] = `port:${from.split(":")[1]}:${fsub}`;
+    // A home's drop joined to a splitter output puts the home on that port.
+    const end = point(cableSpans(d).at(-1).to);
+    const s = findEquipment(from.split(":")[1]);
+    if (end && end.type === "nid" && s) putHomeOnPort(end, s, Number(fsub));
   } else {
     plan.xconnects.push({ id: makeId(), at: locId, a: from, b: to });
   }
@@ -259,6 +266,7 @@ function resetConnections(locId) {
   for (const d of childCables(locId)) {
     delete d.picks;
     delete d.pins;
+    delete d.handOnly;
   }
   savePlan();
 }

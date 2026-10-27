@@ -25,7 +25,7 @@ function openMove(id) {
     if (c && (c.through || c.picks)) {
       body.append(el("p", "hint", c.through
         ? `${c.name} will start at the new location as a new cable.`
-        : `The fibers picked for ${c.name} go back to automatic.`));
+        : `The fibers picked for ${c.name} are cleared: splice them again at the new spot.`));
     }
     formButtons(foot, () => {
       if (target.value === path.from) return finish();
@@ -40,13 +40,16 @@ function openMove(id) {
           if (next) {
             delete next.through;
             delete next.prev;
+            spliceByHand(next);
             const name = cableNameFor("cable", cableSpans(next).at(-1).to);
             for (const s of cableSpans(next)) s.name = name;
           }
           continue;
         }
         x.from = target.value;
-        delete x.picks;
+        // Moving never splices: picks made for the old spot are cleared,
+        // and an automatic cable stays automatic.
+        if (x.picks || x.handOnly || x.through) spliceByHand(x);
         // A cable that passed through its old spot now starts at the new one.
         if (x.through) {
           delete x.through;

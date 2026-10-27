@@ -61,7 +61,7 @@ function buildSpliceModel() {
       for (const s of here) {
         if (feederAt(m.id, s) !== span) continue;
         if (s.f2) fix(s.f2, `split-in:${s.id}`);
-        else items.push(`split-in:${s.id}`);
+        else if (!s.handOnly) items.push(`split-in:${s.id}`);
       }
       if (incomingCable(m.id) !== span) continue;
       for (const d of childCables(m.id).filter((c) => !c.through)) {
@@ -201,7 +201,10 @@ function buildSpliceModel() {
     const byItem = new Map([...inMap].map(([n, it]) => [it, n]));
     for (const s of here) {
       const sc = feederAt(locId, s);
-      const from = s.f2 && sc && s.f2 <= sc.fibers ? fiberLabel(cableStart(sc), s.f2) : source(L, `split-in:${s.id}`);
+      // An input taken apart by hand, or never spliced, feeds from nothing.
+      const from = s.f2 && sc && s.f2 <= sc.fibers ? fiberLabel(cableStart(sc), s.f2)
+        : !s.f2 && (s.handOnly || s.f2Manual) ? { text: "Not spliced", colors: "", missing: true }
+        : source(L, `split-in:${s.id}`);
       const via = s.tailIn && tailFeet(s) ? ` (${tailFeet(s)} ft tail)` : "";
       rows.push({ from, to: { text: `${eqLabel(s)} input${via}`, colors: "" }, note: f2Label(s), key: `split:${s.id}:in`,
         phase: Math.max(phaseIdx(s), sc ? phaseIdx(sc) : 0),
@@ -210,7 +213,11 @@ function buildSpliceModel() {
     for (const d of childCables(locId).filter((x) => !x.through)) {
       for (const f of childFibers(d)) {
         let from;
-        if (madeHere(here, f.item)) from = source(L, f.item);
+        // On a cable spliced by hand only, a splitter output feeds a fiber
+        // only where the user joined them (a pin).
+        const unjoined = d.handOnly && madeHere(here, f.item) && (d.pins || {})[f.out] !== f.item;
+        if (unjoined) from = { text: "Not spliced", colors: "", missing: true };
+        else if (madeHere(here, f.item)) from = source(L, f.item);
         else if (d.picks) {
           from = f.in && c ? fiberLabel(cableStart(c), f.in)
             : { text: f.in ? `No cable reaches ${L.name}` : "Not spliced (not in the fibers picked)", colors: "", missing: true };
@@ -224,7 +231,8 @@ function buildSpliceModel() {
         const sp = here.find((s) => f.item.startsWith(`port:${s.id}:`));
         const phase = Math.max(phaseIdx(d), sp ? phaseIdx(sp) : c ? phaseIdx(c) : 0);
         let src = null;
-        if (sp) src = { kind: "split", id: sp.id };
+        if (unjoined) src = null;
+        else if (sp) src = { kind: "split", id: sp.id };
         else if (c && d.picks) src = f.in ? { kind: "fiber", n: f.in } : null;
         else if (c && byItem.has(f.item)) src = { kind: "fiber", n: byItem.get(f.item) };
         rows.push({ from, to: fiberLabel(d, f.out), note: describe(f.item), key: `fiber:${d.id}:${f.out}`, phase,
