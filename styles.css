@@ -445,6 +445,14 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 
 /* --- Dialogs --- */
 
+/* "Remove 9 connections?" over the splice case editor (ui.js confirmBox). */
+.confirm-shade { position: fixed; inset: 0; z-index: 41; background: rgba(5, 9, 13, 0.55); }
+.wizard.confirm-panel { z-index: 42; width: min(480px, calc(100vw - 24px)); }
+.confirm-panel p { margin: 0 0 18px; font-size: 1.02rem; line-height: 1.45; }
+.confirm-foot { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.btn.danger-solid, .btn.danger-solid:not(.ghost):not(.danger) { background: #c9372c; border-color: #c9372c; color: #fff; box-shadow: 0 4px 14px rgba(201, 55, 44, 0.3); }
+.btn.danger-solid:not(.ghost):not(.danger):hover { background: #db4a3e; }
+
 .wizard {
   position: fixed;
   z-index: 20;

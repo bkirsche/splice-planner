@@ -227,6 +227,54 @@ function typingIn(target) {
   return !!(target && target.closest && target.closest("input, textarea, select, [contenteditable=''], [contenteditable=true]"));
 }
 
+// --- Asking first ---
+// The app doesn't ask "are you sure?"; it offers Undo. Taking splices
+// apart is the one exception: it asks, then still offers Undo.
+
+const confirmPanel = el("div", "wizard confirm-panel");
+confirmPanel.hidden = true;
+confirmPanel.setAttribute("role", "alertdialog");
+confirmPanel.setAttribute("aria-modal", "true");
+const confirmShade = el("div", "confirm-shade");
+confirmShade.hidden = true;
+document.body.append(confirmShade, confirmPanel);
+let confirmBack = null;
+
+function confirmBox(title, text, okLabel, onOk) {
+  const back = document.activeElement;
+  confirmPanel.innerHTML = "";
+  const close = () => {
+    confirmPanel.hidden = true;
+    confirmShade.hidden = true;
+    confirmBack = null;
+    if (back && back.isConnected) back.focus();
+  };
+  confirmBack = close;
+  const h = el("h3", "", title);
+  h.id = "confirm-title";
+  confirmPanel.setAttribute("aria-labelledby", h.id);
+  const foot = el("div", "row confirm-foot");
+  const ok = btnEl(okLabel, () => {
+    close();
+    onOk();
+  }, "btn big danger-solid");
+  foot.append(btnEl("Cancel", close, "btn ghost"), ok);
+  confirmPanel.append(xButton(close), h, el("p", "", text), foot);
+  confirmPanel.hidden = false;
+  confirmShade.hidden = false;
+  ok.focus();
+}
+dragByTitle(confirmPanel);
+confirmShade.addEventListener("click", () => confirmBack && confirmBack());
+
+// Esc closes the question, and only the question.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || !confirmBack) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  confirmBack();
+}, true);
+
 // --- Undo bar ---
 // No Yes/No popups: things happen right away, and a bar at the bottom
 // offers to take them back for a few seconds.

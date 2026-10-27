@@ -431,16 +431,21 @@ function openConnections(locId) {
     body.append(info, tools, wrap);
     const reopen = () => openConnections(locId);
 
-    // Take connections apart, with an Undo note that brings it all back
-    // (trays and slots too) and reopens the editor.
+    // Take connections apart. It asks first (Brian's one exception to
+    // "no are-you-sure pop-ups"), then leaves an Undo note that brings it
+    // all back (trays and slots too) and reopens the editor.
     function removeConns(list, where) {
       if (!list.length) return;
       const n = list.length;
-      const text = n === 1 ? `Took apart ${endpointLabel(list[0].from)} → ${endpointLabel(list[0].to)}.`
-        : `Took apart ${n} connections ${where}.`;
-      withUndo(text, () => disconnectAll(locId, list), reopen);
-      for (const c of list) sel.delete(c.to);
-      render();
+      const one = n === 1 ? `${endpointLabel(list[0].from)} → ${endpointLabel(list[0].to)}` : "";
+      const text = n === 1 ? `Took apart ${one}.` : `Took apart ${n} connections ${where}.`;
+      confirmBox(n === 1 ? "Remove this connection?" : `Remove ${n} connections?`,
+        `${n === 1 ? `${one} will be taken apart.` : `All ${n} connections ${where} will be taken apart.`} You can Undo it right after.`,
+        n === 1 ? "Remove 1 connection" : `Remove ${n} connections`, () => {
+          withUndo(text, () => disconnectAll(locId, list), reopen);
+          for (const c of list) sel.delete(c.to);
+          render();
+        });
     }
 
     function render() {
@@ -819,7 +824,7 @@ function openConnections(locId) {
     // removes what's selected.
     function onKey(e) {
       if (!wrap.isConnected) return document.removeEventListener("keydown", onKey, true);
-      if (formPanel.hidden || !menu.hidden || typingIn(e.target)) return;
+      if (formPanel.hidden || !menu.hidden || confirmBack || typingIn(e.target)) return;
       if (e.key === "Escape" && clearSel()) {
         e.preventDefault();
         e.stopImmediatePropagation();
