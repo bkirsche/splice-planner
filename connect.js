@@ -119,7 +119,7 @@ function endpointGroups(locId) {
   const left = [];
   const right = [];
   const fiberGroup = (c, where) => {
-    const g = { title: `${c.name} · ${c.fibers}F ${where}`, items: [] };
+    const g = { id: `cable:${c.id}:${where}`, title: `${c.name} · ${c.fibers}F ${where}`, items: [] };
     for (const f of colorCode(c.fibers)) {
       g.items.push({ key: `fiber:${c.id}:${f.number}`, label: `#${f.number}`, sub: fiberText(c, f.number).replace(/^#\d+ /, ""),
         color: f.fiberColor, tube: tubeCount(c.fibers) > 1 ? f.tubeColor : null, tubeNo: f.tube });
@@ -128,13 +128,13 @@ function endpointGroups(locId) {
   };
   for (const eq of L.equipment || []) {
     if (eq.type === "splitter") {
-      const outs = { title: `${eqLabel(eq)} outputs`, items: [] };
+      const outs = { id: `split:${eq.id}:out`, title: `${eqLabel(eq)} outputs`, items: [] };
       for (let n = 1; n <= splitterPorts(eq); n++) outs.items.push({ key: `split:${eq.id}:${n}`, label: `Out ${n}` });
       left.push(outs);
-      right.push({ title: `${eqLabel(eq)}`, items: [{ key: `split:${eq.id}:in`, label: "Input" }] });
+      right.push({ id: `split:${eq.id}:in`, title: `${eqLabel(eq)}`, items: [{ key: `split:${eq.id}:in`, label: "Input" }] });
     }
     if (hasCards(eq)) {
-      const g = { title: eqLabel(eq), items: [] };
+      const g = { id: `eq:${eq.id}`, title: eqLabel(eq), items: [] };
       for (const card of eq.cards) for (const port of card.ports) g.items.push({ key: `port:${eq.id}:${port.id}`, label: port.name, sub: card.name });
       left.push(g);
       // An OLT only sends; panels and terminals pass light through.
@@ -146,6 +146,60 @@ function endpointGroups(locId) {
   if (arriving) left.push(fiberGroup(cableStart(arriving), "in"));
   for (const d of childCables(locId).filter((x) => !x.through)) right.push(fiberGroup(d, "out"));
   return { left, right };
+}
+
+// --- Block order ---
+
+// The order the editor shows its blocks in, per side, as Arrange saved
+// it on the location. Only the display: splices and sheets don't see it.
+// Blocks it doesn't know yet keep their own order after the known ones.
+function orderedGroups(groups, ids) {
+  if (!ids || !ids.length) return groups;
+  const at = (g, i) => (ids.includes(g.id) ? ids.indexOf(g.id) : ids.length + i);
+  return groups.map((g, i) => [at(g, i), g]).sort((a, b) => a[0] - b[0]).map((x) => x[1]);
+}
+
+// Each block moves to the average row of what it connects to on the
+// other side (barycenter), a few sweeps back and forth; the try with
+// the fewest crossing lines wins. Fibers keep their color order.
+function arrangeBlocks(left, right, conns) {
+  const rows = (groups) => {
+    const pos = new Map();
+    let n = 0;
+    for (const g of groups) for (const x of g.items) pos.set(x.key, n++);
+    return pos;
+  };
+  const crossings = (l, r) => {
+    const pl = rows(l), pr = rows(r);
+    const ends = conns.map((c) => [pl.get(c.from), pr.get(c.to)]).filter(([a, b]) => a != null && b != null);
+    let n = 0;
+    for (let i = 0; i < ends.length; i++) for (let j = i + 1; j < ends.length; j++) {
+      if ((ends[i][0] - ends[j][0]) * (ends[i][1] - ends[j][1]) < 0) n++;
+    }
+    return n;
+  };
+  // Blocks with nothing connected keep their order, after the rest.
+  const sweep = (groups, other, mine, theirs) => {
+    const pos = rows(other);
+    const bary = (g) => {
+      const keys = new Set(g.items.map((x) => x.key));
+      const ys = conns.filter((c) => keys.has(c[mine]) && pos.has(c[theirs])).map((c) => pos.get(c[theirs]));
+      return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : Infinity;
+    };
+    return groups.map((g, i) => [bary(g), i, g]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+  };
+  let best = { l: left, r: right, n: crossings(left, right) };
+  let l = left, r = right;
+  for (let i = 0; i < 3; i++) {
+    r = sweep(r, l, "to", "from");
+    l = sweep(l, r, "from", "to");
+    const n = crossings(l, r);
+    if (n < best.n) best = { l, r, n };
+  }
+  const r2 = sweep(best.r, best.l, "to", "from");
+  const n2 = crossings(best.l, r2);
+  if (n2 < best.n) best = { l: best.l, r: r2, n: n2 };
+  return best;
 }
 
 // --- Changing connections ---
@@ -464,6 +518,21 @@ function openConnections(locId) {
       flash(n ? `Spliced ${n} fiber${n === 1 ? "" : "s"}.` : "Nothing left to fill.");
     }
 
+    // Only the display order changes; Undo puts the old one back.
+    function arrangeNow(left, right, conns) {
+      const was = arrangeBlocks(left, right, conns);
+      const ids = (gs) => gs.map((g) => g.id);
+      const same = ids(was.l).join() === ids(left).join() && ids(was.r).join() === ids(right).join();
+      if (same) {
+        flash("Already as untangled as it gets.");
+        return;
+      }
+      withUndo(`Arranged the blocks at ${L.name}: ${was.n} crossing line${was.n === 1 ? "" : "s"} left.`, () => {
+        L.blockOrder = { L: ids(was.l), R: ids(was.r) };
+      }, reopen);
+      render();
+    }
+
     function render() {
       const model = buildSpliceModel();
       const conns = connectionsAt(model, locId);
@@ -475,7 +544,10 @@ function openConnections(locId) {
       for (const k of [...sel]) if (!byTarget.has(k)) sel.delete(k);
       const connOf = (side, key) => (side === "L" ? bySource : byTarget).get(key);
       const allSel = (list) => list.length > 0 && list.every((c) => sel.has(c.to));
-      const { left, right } = endpointGroups(locId);
+      const groups = endpointGroups(locId);
+      const order = L.blockOrder || {};
+      const left = orderedGroups(groups.left, order.L);
+      const right = orderedGroups(groups.right, order.R);
       const closure = closureAt(L);
       const slots = traySlots(L, conns.filter((c) => c.kind !== "patch").map((c) => c.to));
 
@@ -534,6 +606,11 @@ function openConnections(locId) {
         withUndo("Back to the app's own choices for the cables leaving here. Patches and F2 counts stayed.", () => resetConnections(locId));
         render();
       }, "btn ghost"));
+      if (conns.length) {
+        const arr = btnEl("Arrange", () => arrangeNow(left, right, conns), "btn ghost");
+        arr.title = "Reorder the cables and splitters so the lines cross as little as possible. Splices stay as they are.";
+        tools.append(arr);
+      }
       if (!closure && !isCabinet(L)) tools.append(btnEl("Add a splice case", () => openEquipment(locId), "btn ghost"));
       if (conns.length) tools.append(btnEl(`Remove all ${conns.length}`, () => removeConns(conns, `at ${L.name}`), "btn ghost cx-danger"));
       // What's selected (Ctrl or Shift-click), and how to act on it.
