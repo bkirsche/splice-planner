@@ -381,15 +381,41 @@ function trayPicture(trays, size, at = new Map(), onSlot = null, selected = null
 
 // --- Editor ---
 
-// Tubes the user folded or opened, per location, so they stay that way
-// when the editor comes back (after an Undo, say).
-const tubeFolds = new Map();
+// How far the case opens: "cables" (names and counts only), "tubes"
+// (cables and their tubes) or "strands" (every fiber). On top of that,
+// cables and tubes the user opened or folded one by one, per location,
+// so they stay that way when the editor comes back (after an Undo, say).
+let foldLevel = "tubes";
+const caseFolds = new Map();
+const FOLD_LEVELS = [
+  ["cables", "Cables", "Only the cables, with how much is connected"],
+  ["tubes", "Tubes", "Cables and their tubes"],
+  ["strands", "Strands", "Every fiber"],
+];
+
+// Tap or Enter/Space folds or opens a header. Its own buttons and
+// checkboxes keep their clicks.
+function foldToggle(elm, open, toggle) {
+  elm.tabIndex = 0;
+  elm.setAttribute("role", "button");
+  elm.setAttribute("aria-expanded", String(open));
+  elm.addEventListener("pointerdown", (e) => e.stopPropagation());
+  elm.addEventListener("click", (e) => {
+    if (!e.target.closest("button, input")) toggle();
+  });
+  elm.addEventListener("keydown", (e) => {
+    if (e.target === elm && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      toggle();
+    }
+  });
+}
 
 function openConnections(locId) {
   const L = point(locId);
   let picked = null; // a source or target waiting for its other end
-  if (!tubeFolds.has(locId)) tubeFolds.set(locId, new Map());
-  const folds = tubeFolds.get(locId); // tube key -> folded or not
+  if (!caseFolds.has(locId)) caseFolds.set(locId, { cables: new Map(), tubes: new Map() });
+  const folds = caseFolds.get(locId); // cable key -> open, tube key -> folded
   let moving = null; // a splice being moved to another tray slot
   let selecting = false; // tapping a row selects it instead of connecting
   const sel = new Set(); // selected connections, by their target key
@@ -478,6 +504,23 @@ function openConnections(locId) {
       }
 
       tools.innerHTML = "";
+      // One switch for the whole case; headers still open one branch.
+      const levels = el("div", "cx-levels");
+      levels.setAttribute("role", "group");
+      levels.setAttribute("aria-label", "Show");
+      levels.append(el("span", "cx-levels-label", "Show"));
+      for (const [v, name, tip] of FOLD_LEVELS) {
+        const b = btnEl(name, () => {
+          foldLevel = v;
+          folds.cables.clear();
+          folds.tubes.clear();
+          render();
+        }, "cx-level" + (foldLevel === v ? " on" : ""));
+        b.title = tip;
+        b.setAttribute("aria-pressed", String(foldLevel === v));
+        levels.append(b);
+      }
+      tools.append(levels);
       tools.append(btnEl("Fill gaps from free fibers", () => {
         const n = fillGaps(locId);
         render();
@@ -572,15 +615,21 @@ function openConnections(locId) {
         return row;
       };
 
-      // Big cables: tubes with nothing connected start folded, except the
-      // first one, so there's always somewhere free to drag to. Any tube
-      // folds or opens with a tap on its header.
+      // Cables and tubes open as far as the level says; a tap on any
+      // cable or tube header folds or opens just that one.
       const fill = (col, groups, side) => {
         for (const g of groups) {
           const box = el("div", "cx-group");
           box.dataset.title = g.title;
           const head = el("div", "cx-head");
-          head.append(el("span", "cx-title", g.title));
+          const cableKey = `${side}:${g.title}`;
+          const open = folds.cables.has(cableKey) ? folds.cables.get(cableKey) : foldLevel !== "cables";
+          head.append(el("span", "cx-chev", open ? "▾" : "▸"), el("span", "cx-title", g.title));
+          head.title = open ? "Fold this cable up" : "Show this cable's tubes";
+          foldToggle(head, open, () => {
+            folds.cables.set(cableKey, !open);
+            render();
+          });
           box.append(head);
           const tubes = new Map(); // tube number -> its items
           for (const item of g.items) if (item.tube) {
@@ -589,14 +638,9 @@ function openConnections(locId) {
           }
           const connsIn = (items) => items.map((x) => connOf(side, x.key)).filter(Boolean);
           const tubeKey = (t) => `${side}:${g.title}:${t}`;
-          let keptOne = false;
-          const startFolded = new Map();
-          for (const [t, items] of tubes) {
-            const idle = !connsIn(items).length;
-            startFolded.set(t, idle && keptOne);
-            if (idle && !keptOne) keptOne = true;
-          }
-          const isFolded = (t) => (folds.has(tubeKey(t)) ? folds.get(tubeKey(t)) : startFolded.get(t));
+          // A cable with one tube shows its fibers from the Tubes level.
+          const isFolded = (t) => (folds.tubes.has(tubeKey(t)) ? folds.tubes.get(tubeKey(t))
+            : !(foldLevel === "strands" || tubes.size === 1));
 
           // Cable header: how much is connected, fold or open every tube,
           // take the whole cable apart.
@@ -611,12 +655,12 @@ function openConnections(locId) {
             });
             head.prepend(cb);
           }
-          if (tubes.size > 1) head.append(el("span", "cx-count mono", `${groupConns.length} of ${g.items.length}`));
+          if (g.items.length > 1) head.append(el("span", "cx-count mono", `${groupConns.length} of ${g.items.length}`));
           const acts = el("span", "cx-acts");
-          if (tubes.size > 1) {
+          if (open && tubes.size > 1) {
             const anyOpen = [...tubes.keys()].some((t) => !isFolded(t));
-            acts.append(btnEl(anyOpen ? "Fold all" : "Open all", () => {
-              for (const t of tubes.keys()) folds.set(tubeKey(t), anyOpen);
+            acts.append(btnEl(anyOpen ? "Fold tubes" : "Open tubes", () => {
+              for (const t of tubes.keys()) folds.tubes.set(tubeKey(t), anyOpen);
               render();
             }, "cx-link"));
           }
@@ -627,6 +671,13 @@ function openConnections(locId) {
           }
           head.append(acts);
 
+          // A folded cable is just its header; lines to it end there.
+          if (!open) {
+            box.classList.add("folded");
+            for (const x of g.items) hidden[side].set(x.key, head);
+            col.append(box);
+            continue;
+          }
           let tube = null;
           for (const item of g.items) {
             const folded = item.tube && isFolded(item.tubeNo);
@@ -636,9 +687,6 @@ function openConnections(locId) {
               const items = tubes.get(t);
               const list = connsIn(items);
               const th = el("div", "cx-tube" + (folded ? " folded" : "") + (list.length ? " has" : ""));
-              th.tabIndex = 0;
-              th.setAttribute("role", "button");
-              th.setAttribute("aria-expanded", String(!folded));
               th.title = folded ? "Show this tube's fibers" : "Fold this tube up";
               if (selecting && list.length) {
                 const cb = checkbox(list);
@@ -661,17 +709,9 @@ function openConnections(locId) {
                 rm.title = `Take apart all ${list.length} connections in tube ${t}`;
                 th.append(rm);
               }
-              const toggle = () => {
-                folds.set(tubeKey(t), !folded);
+              foldToggle(th, !folded, () => {
+                folds.tubes.set(tubeKey(t), !folded);
                 render();
-              };
-              th.addEventListener("pointerdown", (e) => e.stopPropagation());
-              th.addEventListener("click", toggle);
-              th.addEventListener("keydown", (e) => {
-                if (e.target === th && (e.key === "Enter" || e.key === " ")) {
-                  e.preventDefault();
-                  toggle();
-                }
               });
               box.append(th);
               // Lines to a folded tube end at its header.
@@ -690,7 +730,8 @@ function openConnections(locId) {
         if (!colL.querySelector(`[data-key="${CSS.escape(c.from)}"]`)) {
           const s = findEquipment(c.from.split(":")[1]);
           const g = [...colL.querySelectorAll(".cx-group")].find((x) => x.dataset.title === `${eqLabel(s)} outputs`);
-          (g || colL).append(endRow({ key: c.from, label: "No DS" }, "L"));
+          if (g && g.classList.contains("folded")) hidden.L.set(c.from, g.querySelector(".cx-head"));
+          else (g || colL).append(endRow({ key: c.from, label: "No DS" }, "L"));
         }
       }
       requestAnimationFrame(() => drawLines(conns));
