@@ -490,6 +490,7 @@ function renderRoute() {
   renderGridButtons();
   updateUnassignedButton();
   renderHeader();
+  if (typeof refreshFeatures === "function") refreshFeatures();
 }
 
 // An empty plan: one card to place the start.
@@ -511,6 +512,7 @@ function renderEmptyRoute() {
   renderGridButtons();
   updateUnassignedButton();
   renderHeader();
+  if (typeof refreshFeatures === "function") refreshFeatures();
 }
 
 function openStartMenu(e) {
