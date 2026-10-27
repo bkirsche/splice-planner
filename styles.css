@@ -1123,7 +1123,9 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 .auto-val { color: #b8c6d4; font-weight: 500; }
 .lock-field.locked .auto-val::after { content: "auto"; margin-left: 6px; padding: 1px 5px; font-family: var(--sans); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); border: 1px solid var(--border-2); border-radius: 4px; }
 .lock-field select, .lock-field input { padding: 6px 8px; border: 1px solid var(--border-2); border-radius: 8px; background: var(--bg); font-size: 0.95rem; }
-.field-row .lock-field input[type=text] { min-width: 200px; }
+/* Inside a form field the lock fills its column and the input shrinks to fit,
+   so it never runs under the next field (and its focus ring stays whole). */
+.field-row .lock-field { display: flex; }
 .count-editor { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .count-selects { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .count-selects select { max-width: 220px; }
