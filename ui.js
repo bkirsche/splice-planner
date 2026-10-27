@@ -196,6 +196,37 @@ function formButtons(foot, onSave, saveLabel = "Save") {
   return save;
 }
 
+// --- Selecting several ---
+// The classic way, everywhere: a click picks just that one, Ctrl (Cmd on
+// a Mac) adds or drops one, Shift picks the run from the last one
+// clicked. A touch screen has no Ctrl, so a tap adds or drops one there.
+// `order` is every key in the order shown; `at` remembers the last one.
+
+function isAddClick(e) {
+  return !!(e && (e.ctrlKey || e.metaKey || e.pointerType === "touch"));
+}
+
+function selectClick(set, order, key, e, at) {
+  if (e && e.shiftKey && at.key != null && order.includes(at.key) && order.includes(key)) {
+    const i = order.indexOf(at.key);
+    const j = order.indexOf(key);
+    if (!isAddClick(e)) set.clear();
+    for (const k of order.slice(Math.min(i, j), Math.max(i, j) + 1)) set.add(k);
+    return;
+  }
+  if (isAddClick(e)) set.has(key) ? set.delete(key) : set.add(key);
+  else {
+    set.clear();
+    set.add(key);
+  }
+  at.key = key;
+}
+
+// A key that types, rather than one that acts on a list.
+function typingIn(target) {
+  return !!(target && target.closest && target.closest("input, textarea, select, [contenteditable=''], [contenteditable=true]"));
+}
+
 // --- Undo bar ---
 // No Yes/No popups: things happen right away, and a bar at the bottom
 // offers to take them back for a few seconds.

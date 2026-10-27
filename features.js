@@ -21,6 +21,7 @@ function addFeatureType(t) {
 }
 
 const fe = { open: false, type: null, sort: null, filter: "", picked: new Set() };
+const feAnchor = { key: null }; // the last row selected, for Shift ranges
 const fePanel = el("aside", "feature-panel");
 fePanel.setAttribute("aria-label", "Feature editor");
 fePanel.hidden = true;
@@ -148,31 +149,36 @@ function renderFeatures() {
       const col = editable.find((c) => c.key === colSel.value);
       feApply(t, col, picked, editorValue(col, editor));
     }, "btn small");
-    bulk.append(el("span", "fe-bulk-n", `${picked.length} ticked`), el("span", "", "Set"), colSel, el("span", "", "to"), valBox, apply,
-      btnEl("Untick all", () => {
+    bulk.append(el("span", "fe-bulk-n", `${picked.length} selected`), el("span", "", "Set"), colSel, el("span", "", "to"), valBox, apply,
+      btnEl("Clear selection", () => {
         fe.picked.clear();
         renderFeatures();
       }, "btn ghost small"));
   } else {
     bulk.append(el("span", "hint", rows.length
-      ? "Change a value right in its cell. Tick several rows to set one value on all of them. Click a column name to sort."
+      ? "Change a value right in its cell. Click a row number to select it (Ctrl-click adds, Shift-click a range) and set one value on all of them. Click a column name to sort."
       : all.length ? "Nothing matches the filter." : `No ${t.label.toLowerCase()} in this plan yet.`));
   }
 
-  // The table.
+  // The table. Rows are selected the classic way: a click on a row's
+  // number (or a cell you can't type in) picks that row, Ctrl-click adds
+  // or drops one, Shift-click picks a run.
+  const order = rows.map((r) => r.id);
+  const pickRow = (id, e) => {
+    selectClick(fe.picked, order, id, e, feAnchor);
+    renderFeatures();
+  };
   const wrap = el("div", "fe-table-wrap");
   const table = el("table", "fe-table");
   const hr = el("tr");
-  const allBox = inputEl("checkbox", "");
-  allBox.setAttribute("aria-label", "Tick every row shown");
-  allBox.checked = rows.length > 0 && rows.every((r) => fe.picked.has(r.id));
-  allBox.indeterminate = !allBox.checked && rows.some((r) => fe.picked.has(r.id));
-  allBox.addEventListener("change", () => {
-    for (const r of rows) allBox.checked ? fe.picked.add(r.id) : fe.picked.delete(r.id);
+  const every = rows.length > 0 && rows.every((r) => fe.picked.has(r.id));
+  const allBtn = btnEl(every ? "None" : "All", () => {
+    for (const r of rows) every ? fe.picked.delete(r.id) : fe.picked.add(r.id);
     renderFeatures();
-  });
+  }, "fe-rowsel all");
+  allBtn.title = every ? "Clear the selection" : "Select every row shown";
   const th0 = el("th", "fe-tick");
-  th0.append(allBox);
+  th0.append(allBtn);
   hr.append(th0);
   for (const c of cols) {
     const sorted = fe.sort && fe.sort.type === t.key && fe.sort.key === c.key ? fe.sort.dir : 0;
@@ -190,17 +196,24 @@ function renderFeatures() {
   const thead = el("thead");
   thead.append(hr);
   const tbody = el("tbody");
-  for (const r of rows) {
+  rows.forEach((r, i) => {
     const tr = el("tr", (fe.picked.has(r.id) ? "picked" : "") + (t.locOf(r) === selectedId ? " shown" : ""));
-    const box = inputEl("checkbox", "");
-    box.checked = fe.picked.has(r.id);
-    box.setAttribute("aria-label", `Tick ${feText(cols[0], r)}`);
-    box.addEventListener("change", () => {
-      box.checked ? fe.picked.add(r.id) : fe.picked.delete(r.id);
-      renderFeatures();
+    tr.dataset.id = r.id;
+    const num = btnEl(String(i + 1), (e) => pickRow(r.id, e), "fe-rowsel");
+    num.title = "Select this row (Ctrl-click adds, Shift-click selects a range)";
+    num.setAttribute("aria-label", `Select ${feText(cols[0], r)}`);
+    num.setAttribute("aria-pressed", String(fe.picked.has(r.id)));
+    // Ctrl or Shift-click anywhere on the row selects, even on a box you
+    // type in; a plain click on a cell you can't change picks the row.
+    tr.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || e.target.closest(".fe-rowsel, .fe-show")) return;
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+        e.preventDefault();
+        pickRow(r.id, e);
+      } else if (e.target.closest(".fe-ro")) pickRow(r.id, e);
     });
     const td0 = el("td", "fe-tick");
-    td0.append(box);
+    td0.append(num);
     tr.append(td0);
     for (const c of cols) {
       const td = el("td", c.edit === "number" ? "num" : "");
@@ -229,7 +242,7 @@ function renderFeatures() {
     tdS.append(show);
     tr.append(tdS);
     tbody.append(tr);
-  }
+  });
   table.append(thead, tbody);
   wrap.append(table);
   fePanel.replaceChildren(head, bulk, wrap);
@@ -383,5 +396,10 @@ document.getElementById("features-open").addEventListener("click", (e) => {
   fe.open ? closeFeatures() : openFeatures();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && fe.open && !document.querySelector(".wizard:not([hidden])")) closeFeatures();
+  if (e.key !== "Escape" || !fe.open || document.querySelector(".wizard:not([hidden])")) return;
+  // The first Esc clears the selection; the next closes the editor.
+  if (fe.picked.size) {
+    fe.picked.clear();
+    renderFeatures();
+  } else closeFeatures();
 });

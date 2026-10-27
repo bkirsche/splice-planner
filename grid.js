@@ -846,16 +846,15 @@ function groupProblem(group, dc, dr) {
 routeView.addEventListener("pointerup", endGridDrag, true);
 routeView.addEventListener("pointercancel", endGridDrag, true);
 
-// --- Picking several homes (grid) ---
-// Shift- or Ctrl-click homes, or Shift-drag a box around them, to pick
-// several at once; on a touch screen, turn on Select and tap or drag.
-// Picked homes can be moved together (Unlock, then drag any one of
-// them), fed from one location and put on one splitter or terminal, or
-// removed, in one go.
+// --- Selecting several locations (grid) ---
+// Ctrl- or Shift-click cards, or Shift-drag a box around them, to select
+// several at once (a plain click opens one card's menu, and clears the
+// selection). Esc or a click on empty canvas clears it. Selected
+// locations can be moved together (Unlock, then drag any one of them),
+// fed from one location and put on one splitter or terminal, or
+// removed (Delete), in one go.
 
 const gridPicked = new Set();
-let gridSelecting = false;
-const gridSelectBtn = document.getElementById("grid-select");
 const pickBar = el("div", "pick-bar");
 pickBar.hidden = true;
 pickBar.setAttribute("role", "status");
@@ -873,85 +872,67 @@ function pickedLocs() {
 
 function renderPicks() {
   const on = !!plan && layoutNow() === "grid" && !isGuest() && !planEmpty();
-  gridSelectBtn.hidden = !on;
-  if (!on) {
-    gridSelecting = false;
-    gridPicked.clear();
-  }
-  gridSelectBtn.classList.toggle("on", gridSelecting);
-  gridSelectBtn.textContent = gridSelecting ? "Done" : "Select";
-  gridSelectBtn.title = gridSelecting ? "Stop picking" : "Pick several locations: tap them or drag a box around them";
-  routeView.classList.toggle("selecting", gridSelecting);
+  if (!on) gridPicked.clear();
   const picked = pickedLocs();
   const homes = pickedHomes();
   for (const id of [...gridPicked]) if (!picked.some((h) => h.id === id)) gridPicked.delete(id);
   for (const cell of tree.querySelectorAll(".grid-cell")) cell.classList.toggle("picked", gridPicked.has(cell.dataset.id));
-  pickBar.hidden = !picked.length && !gridSelecting;
+  pickBar.hidden = !picked.length;
   pickBar.innerHTML = "";
   if (pickBar.hidden) return;
-  if (!picked.length) {
-    pickBar.append(el("span", "pick-text", "Tap locations or drag a box around them."));
-    return;
-  }
   const allHomes = homes.length === picked.length;
-  pickBar.append(el("span", "pick-text", allHomes ? `${plural(homes.length, "home")} picked` : `${plural(picked.length, "location")} picked`),
-    btnEl("Move", () => {
-      if (!gridUnlocked) {
-        gridUnlocked = true;
-        renderRoute();
-      }
-      showNote("Drag any picked location: the others move with it. Tap Lock when you're done.");
-    }, "btn ghost small"),
-    ...(allHomes ? [btnEl("Feed from…", () => openFeedPicked(), "btn ghost small")] : []),
-    btnEl("Remove", () => removePicked(), "btn ghost small danger"),
+  pickBar.append(el("span", "pick-text", allHomes ? `${plural(homes.length, "home")} selected` : `${plural(picked.length, "location")} selected`),
+    el("span", "pick-hint", "Right-click one for what to do · Delete removes · Esc clears"),
     btnEl("Clear", () => {
       gridPicked.clear();
       renderPicks();
     }, "btn ghost small"));
 }
 
-gridSelectBtn.addEventListener("click", (e) => {
-  e.stopPropagation();
-  if (guestBlocked()) return;
-  gridSelecting = !gridSelecting;
-  if (!gridSelecting) gridPicked.clear();
-  closeMenu();
-  renderPicks();
-});
-
 function togglePick(id) {
   const p = point(id);
   if (!p) return;
-  if (id === plan.points[0].id) return showNote("The start can't be picked.");
+  if (id === plan.points[0].id) return showNote("The start can't be selected with others.");
   if (gridPicked.has(id)) gridPicked.delete(id);
   else gridPicked.add(id);
   closeMenu();
   renderPicks();
 }
 
-// Shift / Ctrl / Cmd-click, or any tap while Select is on, picks a home
-// instead of opening its menu.
+function clearPicks() {
+  if (!gridPicked.size) return false;
+  gridPicked.clear();
+  renderPicks();
+  return true;
+}
+
+// Shift / Ctrl / Cmd-click adds a card to the selection or drops it,
+// instead of opening its menu. A plain click opens just that card's
+// menu; a click on empty canvas clears the selection.
 routeView.addEventListener("click", (e) => {
-  if (layoutNow() !== "grid" || isGuest()) return;
-  if (!gridSelecting && !e.shiftKey && !e.ctrlKey && !e.metaKey) return;
+  if (layoutNow() !== "grid" || isGuest() || e.defaultPrevented) return;
   const card = e.target.closest(".grid-cell .stop");
+  if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    if (!e.target.closest(".pick-bar, .zoom-bar, .minimap, .context-menu")) clearPicks();
+    return;
+  }
   if (!card) return;
   e.preventDefault();
   e.stopImmediatePropagation();
   togglePick(card.dataset.id);
 }, true);
 
-// Shift-drag (or drag while Select is on) on the background draws a box;
-// the homes it touches are picked.
+// Shift-drag on the background draws a box; the locations it touches are
+// added to the selection.
 let lasso = null;
 
 routeView.addEventListener("pointerdown", (e) => {
-  if (layoutNow() !== "grid" || isGuest() || e.button !== 0 || (!gridSelecting && !e.shiftKey)) return;
+  if (layoutNow() !== "grid" || isGuest() || e.button !== 0 || !e.shiftKey) return;
   if (e.target.closest(".stop, .grid-label, .add-dir, .zoom-bar, .minimap, .pick-bar")) return;
   e.stopImmediatePropagation();
   const box = el("div", "grid-lasso");
   routeView.append(box);
-  lasso = { x0: e.clientX, y0: e.clientY, box, add: e.shiftKey || gridSelecting };
+  lasso = { x0: e.clientX, y0: e.clientY, box };
   routeView.setPointerCapture(e.pointerId);
   moveLasso(e);
 }, true);
@@ -991,11 +972,15 @@ function endLasso(e) {
 routeView.addEventListener("pointerup", endLasso, true);
 routeView.addEventListener("pointercancel", endLasso, true);
 
+// Esc clears the selection; Delete removes the selected locations (it
+// asks first, as removing one does).
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || (!gridPicked.size && !gridSelecting)) return;
-  gridPicked.clear();
-  gridSelecting = false;
-  if (plan) renderPicks();
+  if (!gridPicked.size || !plan || typingIn(e.target)) return;
+  if (e.key === "Escape") clearPicks();
+  else if ((e.key === "Delete" || e.key === "Backspace") && formPanel.hidden && menu.hidden) {
+    e.preventDefault();
+    removePicked();
+  }
 });
 
 // Feed the picked homes from one location, and put them on one splitter

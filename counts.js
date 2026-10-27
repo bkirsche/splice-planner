@@ -474,11 +474,12 @@ function countDevices(p) {
 }
 
 // Homes on the left, the ports of a splitter or terminal on the right:
-// drag a home onto a port (or tap the home, then the port). Ticked homes
+// drag a home onto a port (or tap the home, then the port). Selected homes
 // can also be filled in order or put back to automatic.
 function openHomeCounts(locId) {
   const L = point(locId);
-  const ticked = new Set();
+  const ticked = new Set(); // the selected homes
+  const tickAt = { key: null }; // the last one selected, for Shift ranges
   let deviceId = null;
   let picked = null; // a home waiting for a port
   openForm(`Home counts at ${L.name}`, (body, foot) => {
@@ -519,24 +520,34 @@ function openHomeCounts(locId) {
       wrap.innerHTML = "";
       const list = el("div", "hc-homes batch-list");
       const head = el("div", "hc-row head");
-      const all = inputEl("checkbox");
-      all.checked = homes().length > 0 && homes().every((h) => ticked.has(h.id));
-      all.title = "Tick all";
-      all.addEventListener("change", () => {
-        for (const h of homes()) all.checked ? ticked.add(h.id) : ticked.delete(h.id);
+      // Homes are selected the classic way: click a home's number,
+      // Ctrl-click to add or drop one, Shift-click for a run.
+      const order = homes().map((h) => h.id);
+      const every = order.length > 0 && order.every((id) => ticked.has(id));
+      const all = btnEl(every ? "None" : "All", () => {
+        for (const id of order) every ? ticked.delete(id) : ticked.add(id);
         render();
-      });
+      }, "fe-rowsel all");
+      all.title = every ? "Clear the selection" : "Select every home";
       head.append(all, el("span", "", "Home"), el("span", "", "F2 · DS"));
       list.append(head);
       const terms = terminalsAt(L);
-      for (const h of homes()) {
+      homes().forEach((h, i) => {
         const row = el("div", "hc-row" + (ticked.has(h.id) ? " on" : "") + (picked === h.id ? " picked" : ""));
-        const box = inputEl("checkbox");
-        box.checked = ticked.has(h.id);
-        box.addEventListener("change", () => {
-          box.checked ? ticked.add(h.id) : ticked.delete(h.id);
-          row.classList.toggle("on", box.checked);
-        });
+        const box = btnEl(String(i + 1), (e) => {
+          selectClick(ticked, order, h.id, e, tickAt);
+          render();
+        }, "fe-rowsel");
+        box.title = "Select this home (Ctrl-click adds, Shift-click selects a range)";
+        box.setAttribute("aria-pressed", String(ticked.has(h.id)));
+        // Ctrl or Shift-click anywhere on the row selects too.
+        row.addEventListener("pointerdown", (e) => {
+          if (e.button !== 0 || !(e.ctrlKey || e.metaKey || e.shiftKey) || e.target.closest(".fe-rowsel")) return;
+          e.preventDefault();
+          e.stopPropagation();
+          selectClick(ticked, order, h.id, e, tickAt);
+          render();
+        }, true);
         const handle = el("span", "hc-handle");
         handle.dataset.home = h.id;
         handle.title = "Drag onto a port, or tap and then tap a port";
@@ -549,7 +560,7 @@ function openHomeCounts(locId) {
         if (terms.length) counts.append(terminalSelect(h, terms, changed));
         row.append(box, handle, counts);
         list.append(row);
-      }
+      });
       if (!homes().length) list.append(el("p", "hint", "No homes here yet."));
 
       // Ports
@@ -576,7 +587,7 @@ function openHomeCounts(locId) {
       }
       wrap.append(list, portsBox);
 
-      // Tools for the ticked homes
+      // Tools for the selected homes
       tools.innerHTML = "";
       const start = inputEl("number", 1, { min: 1 });
       start.className = "small-num";
@@ -604,7 +615,7 @@ function openHomeCounts(locId) {
       }, "btn ghost danger"));
     }
 
-    // The ticked homes, or every home when none are ticked.
+    // The selected homes, or every home when none are selected.
     function chosenHomes() {
       const chosen = homes().filter((h) => ticked.has(h.id));
       return chosen.length ? chosen : homes();
@@ -664,7 +675,7 @@ function openHomeCounts(locId) {
         const out = [];
         for (const h of chosen) {
           while (n <= max && taken.has(n)) n++;
-          if (n > max) return say(`${device.name} runs out of ports after ${out.length} home${out.length === 1 ? "" : "s"}. Start lower, tick fewer homes, or pick another splitter.`, true);
+          if (n > max) return say(`${device.name} runs out of ports after ${out.length} home${out.length === 1 ? "" : "s"}. Start lower, select fewer homes, or pick another splitter.`, true);
           out.push([h, n++]);
         }
         withUndo(`Filled DS on ${out.length} home${out.length === 1 ? "" : "s"} from port ${from}.`, () => {
@@ -682,7 +693,7 @@ function openHomeCounts(locId) {
           chosen.forEach((h, i) => putHomeOnTerminal(h, device, ports[i0 + i].id));
         });
       }
-      say((none ? "No homes were ticked, so every home here was filled. " : "") + "Done. Those homes are now set by hand (unlocked).");
+      say((none ? "No homes were selected, so every home here was filled. " : "") + "Done. Those homes are now set by hand (unlocked).");
       render();
     }
 

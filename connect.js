@@ -393,15 +393,17 @@ const FOLD_LEVELS = [
   ["strands", "Strands", "Every fiber"],
 ];
 
-// Tap or Enter/Space folds or opens a header. Its own buttons and
-// checkboxes keep their clicks.
-function foldToggle(elm, open, toggle) {
+// Tap or Enter/Space folds or opens a header; Ctrl or Shift-click
+// selects what's in it instead. Its own buttons keep their clicks.
+function foldToggle(elm, open, toggle, pick) {
   elm.tabIndex = 0;
   elm.setAttribute("role", "button");
   elm.setAttribute("aria-expanded", String(open));
   elm.addEventListener("pointerdown", (e) => e.stopPropagation());
   elm.addEventListener("click", (e) => {
-    if (!e.target.closest("button, input")) toggle();
+    if (e.target.closest("button, input")) return;
+    if (pick && (e.ctrlKey || e.metaKey || e.shiftKey)) pick(e);
+    else toggle();
   });
   elm.addEventListener("keydown", (e) => {
     if (e.target === elm && (e.key === "Enter" || e.key === " ")) {
@@ -417,18 +419,16 @@ function openConnections(locId) {
   if (!caseFolds.has(locId)) caseFolds.set(locId, { cables: new Map(), tubes: new Map() });
   const folds = caseFolds.get(locId); // cable key -> open, tube key -> folded
   let moving = null; // a splice being moved to another tray slot
-  let selecting = false; // tapping a row selects it instead of connecting
   const sel = new Set(); // selected connections, by their target key
-  let anchor = null; // the last row selected, for Shift ranges
+  const anchor = { key: null }; // the last one selected, for Shift ranges
   let now = null; // this render's connections, for selecting
   let hidden = null; // side -> key -> tube header, for rows folded away
   const title = isCabinet(L) ? `Connections at ${L.name}` : closureAt(L) ? `Splice case at ${L.name}` : `Splices at ${L.name}`;
   openForm(title, (body, foot) => {
     const info = el("div", "cx-info");
     const tools = el("div", "cx-tools");
-    const selbar = el("div", "cx-selbar");
     const wrap = el("div", "cx-wrap");
-    body.append(info, tools, selbar, wrap);
+    body.append(info, tools, wrap);
     const reopen = () => openConnections(locId);
 
     // Take connections apart, with an Undo note that brings it all back
@@ -453,19 +453,6 @@ function openConnections(locId) {
       for (const k of [...sel]) if (!byTarget.has(k)) sel.delete(k);
       const connOf = (side, key) => (side === "L" ? bySource : byTarget).get(key);
       const allSel = (list) => list.length > 0 && list.every((c) => sel.has(c.to));
-      const toggleAll = (list) => {
-        const on = !allSel(list);
-        for (const c of list) on ? sel.add(c.to) : sel.delete(c.to);
-        render();
-      };
-      const checkbox = (list) => {
-        const box = el("input", "cx-check");
-        box.type = "checkbox";
-        box.checked = allSel(list);
-        box.indeterminate = !box.checked && list.some((c) => sel.has(c.to));
-        box.tabIndex = -1;
-        return box;
-      };
       const { left, right } = endpointGroups(locId);
       const closure = closureAt(L);
       const slots = traySlots(L, conns.filter((c) => c.kind !== "patch").map((c) => c.to));
@@ -531,30 +518,9 @@ function openConnections(locId) {
         render();
       }, "btn ghost"));
       if (!closure && !isCabinet(L)) tools.append(btnEl("Add a splice case", () => openEquipment(locId), "btn ghost"));
-      if (conns.length) {
-        tools.append(btnEl(selecting ? "Stop selecting" : "Select…", () => {
-          selecting = !selecting;
-          if (!selecting) sel.clear();
-          picked = null;
-          render();
-        }, "btn ghost" + (selecting ? " on" : "")), btnEl(`Remove all ${conns.length}`, () => removeConns(conns, `at ${L.name}`), "btn ghost cx-danger"));
-      }
-
-      // While selecting: what's picked, and what to do with it. Stays in
-      // view while the list scrolls.
-      selbar.innerHTML = "";
-      selbar.hidden = !selecting;
-      if (selecting) {
-        const list = conns.filter((c) => sel.has(c.to));
-        selbar.append(el("span", "cx-selcount", list.length ? `${list.length} selected` : "Tap connections or tube headers to select them. Shift-tap selects a range."));
-        if (list.length) selbar.append(btnEl(`Remove ${list.length} selected`, () => removeConns(list, "you selected"), "btn cx-danger-solid"));
-        selbar.append(btnEl(allSel(conns) ? "Select none" : "Select all", () => toggleAll(conns), "btn ghost"),
-          btnEl("Done", () => {
-            selecting = false;
-            sel.clear();
-            render();
-          }, "btn ghost"));
-      }
+      if (conns.length) tools.append(btnEl(`Remove all ${conns.length}`, () => removeConns(conns, `at ${L.name}`), "btn ghost cx-danger"));
+      // What's selected (Ctrl or Shift-click), and how to act on it.
+      if (sel.size) tools.append(el("span", "cx-selcount", `${sel.size} selected · Delete or right-click to remove · Esc clears`));
 
       wrap.innerHTML = "";
       const colL = el("div", "cx-col cx-left");
@@ -569,7 +535,6 @@ function openConnections(locId) {
           + (conn && sel.has(conn.to) ? " sel" : ""));
         row.dataset.key = item.key;
         row.dataset.side = side;
-        if (selecting) row.classList.add("selecting");
         const dot = el("span", "cx-dot");
         if (item.color) {
           dot.style.background = item.color.hex;
@@ -605,11 +570,6 @@ function openConnections(locId) {
           x.addEventListener("pointerdown", (e) => e.stopPropagation());
           row.append(x);
         }
-        if (selecting) {
-          const box = checkbox(conn ? [conn] : []);
-          box.disabled = !conn;
-          row.append(box);
-        }
         if (item.key.endsWith(":auto")) row.classList.add("fixed");
         if (item.tube) tintTube(row, item.tube);
         return row;
@@ -629,7 +589,7 @@ function openConnections(locId) {
           foldToggle(head, open, () => {
             folds.cables.set(cableKey, !open);
             render();
-          });
+          }, (e) => selectGroup(connsIn(g.items), e));
           box.append(head);
           const tubes = new Map(); // tube number -> its items
           for (const item of g.items) if (item.tube) {
@@ -645,16 +605,9 @@ function openConnections(locId) {
           // Cable header: how much is connected, fold or open every tube,
           // take the whole cable apart.
           const groupConns = connsIn(g.items);
-          if (selecting && groupConns.length) {
-            const cb = checkbox(groupConns);
-            cb.title = "Select every connection on this cable";
-            cb.tabIndex = 0;
-            cb.addEventListener("click", (e) => {
-              e.preventDefault();
-              toggleAll(groupConns);
-            });
-            head.prepend(cb);
-          }
+          if (allSel(groupConns)) head.classList.add("sel");
+          head.dataset.side = side;
+          head.dataset.cable = g.title;
           if (g.items.length > 1) head.append(el("span", "cx-count mono", `${groupConns.length} of ${g.items.length}`));
           const acts = el("span", "cx-acts");
           if (open && tubes.size > 1) {
@@ -686,18 +639,11 @@ function openConnections(locId) {
               const t = tube;
               const items = tubes.get(t);
               const list = connsIn(items);
-              const th = el("div", "cx-tube" + (folded ? " folded" : "") + (list.length ? " has" : ""));
+              const th = el("div", "cx-tube" + (folded ? " folded" : "") + (list.length ? " has" : "") + (allSel(list) ? " sel" : ""));
               th.title = folded ? "Show this tube's fibers" : "Fold this tube up";
-              if (selecting && list.length) {
-                const cb = checkbox(list);
-                cb.title = "Select every connection in this tube";
-                cb.addEventListener("click", (e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  toggleAll(list);
-                });
-                th.append(cb);
-              }
+              th.dataset.side = side;
+              th.dataset.cable = g.title;
+              th.dataset.tube = t;
               const sw = swatch(item.tube, true);
               th.append(el("span", "cx-chev", folded ? "▸" : "▾"), sw, el("span", "cx-tname", `Tube ${t} · ${item.tube.name}`),
                 el("span", "cx-count mono", list.length ? `${list.length} of ${items.length} connected` : "nothing connected"));
@@ -712,7 +658,7 @@ function openConnections(locId) {
               foldToggle(th, !folded, () => {
                 folds.tubes.set(tubeKey(t), !folded);
                 render();
-              });
+              }, (e) => selectGroup(list, e));
               box.append(th);
               // Lines to a folded tube end at its header.
               if (folded) for (const x of items) hidden[side].set(x.key, sw);
@@ -739,17 +685,16 @@ function openConnections(locId) {
       requestAnimationFrame(() => drawLines(conns));
     }
 
-    // The incoming side stays in view while the long right side scrolls
-    // (below the select bar, when it shows). Taller than the dialog, it
-    // scrolls on its own. Lines follow either scroll.
+    // The incoming side stays in view while the long right side scrolls.
+    // Taller than the dialog, it scrolls on its own. Lines follow either
+    // scroll.
     let shown = null;
     let queued = false;
     function stickLeft() {
       const colL = wrap.querySelector(".cx-left");
-      const top = selbar.hidden ? 0 : selbar.offsetHeight + 8;
       const cs = getComputedStyle(formPanel);
-      colL.style.top = `${top}px`;
-      colL.style.maxHeight = `${formPanel.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - top}px`;
+      colL.style.top = "0px";
+      colL.style.maxHeight = `${formPanel.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)}px`;
       colL.addEventListener("scroll", redraw);
     }
     function redraw() {
@@ -835,36 +780,68 @@ function openConnections(locId) {
       renderRoute();
     }
 
-    // Select a row's connection, or with Shift every connection from the
-    // last one picked to this one, down the same column.
+    const connAt = (side, key) => (side === "L" ? now.bySource : now.byTarget).get(key);
+
+    // Ctrl-click adds or drops a row's connection, Shift-click every
+    // connection from the last one to this one, down the same column.
+    // (A plain click still starts or ends a connection.)
     function choose(d) {
-      const conn = (d.side === "L" ? now.bySource : now.byTarget).get(d.key);
+      const conn = connAt(d.side, d.key);
       if (!conn) return;
-      selecting = true;
       picked = null;
-      if (d.shift && anchor && anchor.side === d.side) {
-        const rows = [...wrap.querySelectorAll(`.cx-${d.side === "L" ? "left" : "right"} .cx-end`)].map((r) => r.dataset.key);
-        const i = rows.indexOf(anchor.key);
-        const j = rows.indexOf(d.key);
-        if (i >= 0 && j >= 0) {
-          for (const k of rows.slice(Math.min(i, j), Math.max(i, j) + 1)) {
-            const c = (d.side === "L" ? now.bySource : now.byTarget).get(k);
-            if (c) sel.add(c.to);
-          }
-        } else sel.add(conn.to);
-      } else if (sel.has(conn.to)) sel.delete(conn.to);
-      else sel.add(conn.to);
-      anchor = d;
+      const order = [...wrap.querySelectorAll(`.cx-${d.side === "L" ? "left" : "right"} .cx-end`)]
+        .map((r) => connAt(d.side, r.dataset.key)).filter(Boolean).map((c) => c.to);
+      // Ctrl-click and Shift-click both add to what's there.
+      selectClick(sel, order, conn.to, { ctrlKey: true, shiftKey: d.shift }, anchor);
       render();
     }
+
+    // Ctrl or Shift-click on a tube or cable header: all of its
+    // connections, or none when they're all selected already.
+    function selectGroup(list, e) {
+      if (!list.length) return;
+      const on = !list.every((c) => sel.has(c.to));
+      if (!e.ctrlKey && !e.metaKey && !e.shiftKey) sel.clear();
+      for (const c of list) on ? sel.add(c.to) : sel.delete(c.to);
+      picked = null;
+      render();
+    }
+
+    function clearSel() {
+      if (!sel.size && !picked) return false;
+      sel.clear();
+      picked = null;
+      render();
+      return true;
+    }
+
+    // Esc clears the selection (a second Esc closes the editor); Delete
+    // removes what's selected.
+    function onKey(e) {
+      if (!wrap.isConnected) return document.removeEventListener("keydown", onKey, true);
+      if (formPanel.hidden || !menu.hidden || typingIn(e.target)) return;
+      if (e.key === "Escape" && clearSel()) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      } else if ((e.key === "Delete" || e.key === "Backspace") && sel.size) {
+        e.preventDefault();
+        removeConns(shown.filter((c) => sel.has(c.to)), "you selected");
+      }
+    }
+    document.addEventListener("keydown", onKey, true);
 
     // Drag from one end to the other, or tap one then the other.
     let drag = null;
     wrap.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
       const end = e.target.closest(".cx-end");
-      if (!end) return;
-      // Ctrl or Shift, or Select mode: tapping selects instead.
-      const choose = selecting || e.ctrlKey || e.metaKey || e.shiftKey;
+      // A click on empty space clears the selection.
+      if (!end) {
+        if (!e.target.closest(".cx-head, .cx-tube, button, input, .cx-line")) clearSel();
+        return;
+      }
+      // Ctrl or Shift: clicking selects instead.
+      const choose = e.ctrlKey || e.metaKey || e.shiftKey;
       if (end.classList.contains("fixed") && !choose) return;
       e.preventDefault();
       if (choose) {
@@ -903,6 +880,8 @@ function openConnections(locId) {
       const temp = wrap.querySelector(".cx-temp");
       if (temp) temp.remove();
       if (d.choose) return choose(d);
+      // A plain click or drag is about this one row: the selection goes.
+      sel.clear();
       if (!d.moved) {
         if (picked && picked.side !== d.side) {
           const p = picked;
@@ -915,6 +894,7 @@ function openConnections(locId) {
       const target = document.elementFromPoint(e.clientX, e.clientY);
       const end = target && target.closest(".cx-end");
       if (end) join(d, { key: end.dataset.key, side: end.dataset.side });
+      else render();
     });
 
     render();

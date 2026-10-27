@@ -753,13 +753,13 @@ const AUTO_CABLE_NAME = /^(Cable|Drop|Splitter tail|Terminal tail) \d+$/;
 
 // --- Fiber grid ---
 // The incoming cable's fibers on the left, the new cable's on the
-// right, each tube on a wash of its color. Tap fibers on the left
-// (Shift+tap for a run, the tube name for a whole tube), then tap where
-// they start on the right, or drag them across. Tap a fiber on the
-// right to take it off.
+// right, each tube on a wash of its color. Click fibers on the left
+// (Ctrl-click adds one, Shift-click a run, the tube name a whole tube),
+// then click where they start on the right, or drag them across. Click
+// a fiber on the right to take it off.
 function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
   const sel = new Set();
-  let last = null;
+  const last = { key: null }; // the last fiber clicked, for Shift runs
   const wrap = el("div", "fgrid");
   const msg = el("p", "hint fgrid-msg");
 
@@ -769,7 +769,7 @@ function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
     const inOf = new Map(pairs.map((p) => [p.out, p.in]));
     wrap.innerHTML = "";
     wrap.append(el("h5", "fgrid-title", "Or pick on the grid"),
-      el("p", "hint", "Tap fibers on the left (Shift+tap for a run, or a tube name for the whole tube), then tap where they start on the right, or drag them across. Tap a fiber on the right to take it off."));
+      el("p", "hint", "Click fibers on the left (Ctrl-click adds one, Shift-click a run, a tube name the whole tube), then click where they start on the right, or drag them across. Click a fiber on the right to take it off."));
     const cols = el("div", "fgrid-cols");
     const side = (title, cable, fibersN, cls, cellFor) => {
       const col = el("div", "fgrid-col " + cls);
@@ -783,10 +783,12 @@ function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
         if (cls === "in") {
           th.type = "button";
           th.title = "Select the free fibers in this tube";
-          th.addEventListener("click", () => {
+          th.addEventListener("click", (e) => {
             const nums = code.filter((f) => f.tube === t && !taken.has(f.number)).map((f) => f.number);
             const all = nums.every((n) => sel.has(n));
-            for (const n of nums) all ? sel.delete(n) : sel.add(n);
+            // A plain click: just this tube. Ctrl or Shift: add it or drop it.
+            if (!isAddClick(e) && !e.shiftKey) sel.clear();
+            for (const n of nums) all && (isAddClick(e) || e.shiftKey) ? sel.delete(n) : sel.add(n);
             render();
           });
         }
@@ -854,13 +856,13 @@ function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
     setPairs([...keep, ...add]);
   }
 
-  function tap(b, shift) {
+  // Fibers on the left are selected the classic way (ui.js selectClick).
+  function tap(b, e) {
     const n = Number(b.dataset.n);
     if (b.dataset.side === "in") {
-      if (shift && last !== null) {
-        for (let i = Math.min(last, n); i <= Math.max(last, n); i++) if (!taken.has(i)) sel.add(i);
-      } else sel.has(n) ? sel.delete(n) : sel.add(n);
-      last = n;
+      const order = [];
+      for (let i = 1; i <= inCable.fibers; i++) if (!taken.has(i)) order.push(i);
+      selectClick(sel, order, n, e, last);
       render();
       return;
     }
@@ -920,7 +922,7 @@ function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
     if (dragged) return;
     const b = e.target.closest(".fcell");
     if (!b || b.disabled) return;
-    tap(b, e.shiftKey);
+    tap(b, e);
   });
 
   render();
