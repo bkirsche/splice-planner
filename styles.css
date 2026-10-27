@@ -674,6 +674,7 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
   user-select: none;
 }
 .cx-col { display: grid; gap: 10px; position: relative; z-index: 1; }
+.cx-left { position: sticky; top: 0; overflow-y: auto; scrollbar-width: thin; }
 .cx-gap { min-height: 1px; }
 .cx-lines { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; overflow: visible; }
 .cx-lines path { pointer-events: stroke; }

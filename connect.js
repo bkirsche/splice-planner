@@ -734,8 +734,43 @@ function openConnections(locId) {
           else (g || colL).append(endRow({ key: c.from, label: "No DS" }, "L"));
         }
       }
+      shown = conns;
+      stickLeft();
       requestAnimationFrame(() => drawLines(conns));
     }
+
+    // The incoming side stays in view while the long right side scrolls
+    // (below the select bar, when it shows). Taller than the dialog, it
+    // scrolls on its own. Lines follow either scroll.
+    let shown = null;
+    let queued = false;
+    function stickLeft() {
+      const colL = wrap.querySelector(".cx-left");
+      const top = selbar.hidden ? 0 : selbar.offsetHeight + 8;
+      const cs = getComputedStyle(formPanel);
+      colL.style.top = `${top}px`;
+      colL.style.maxHeight = `${formPanel.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - top}px`;
+      colL.addEventListener("scroll", redraw);
+    }
+    function redraw() {
+      if (!wrap.isConnected) {
+        formPanel.removeEventListener("scroll", redraw);
+        removeEventListener("resize", restick);
+        return;
+      }
+      if (queued || !shown) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        if (wrap.isConnected) drawLines(shown);
+      });
+    }
+    function restick() {
+      if (wrap.isConnected) stickLeft();
+      redraw();
+    }
+    formPanel.addEventListener("scroll", redraw);
+    addEventListener("resize", restick);
 
     // The fiber color of a key, for lines whose row is folded away.
     function keyColor(key) {
@@ -751,6 +786,8 @@ function openConnections(locId) {
       svg.setAttribute("width", box.width);
       svg.setAttribute("height", wrap.scrollHeight);
       svg.innerHTML = "";
+      // Rows scrolled out of the left column draw from its edge.
+      const cl = wrap.querySelector(".cx-left").getBoundingClientRect();
       for (const c of conns) {
         const rowA = wrap.querySelector(`.cx-left [data-key="${CSS.escape(c.from)}"] .cx-dot`);
         const rowB = wrap.querySelector(`.cx-right [data-key="${CSS.escape(c.to)}"] .cx-dot`);
@@ -759,8 +796,10 @@ function openConnections(locId) {
         if (!a || !b) continue;
         const ra = a.getBoundingClientRect();
         const rb = b.getBoundingClientRect();
-        const x1 = ra.right - box.left;
-        const y1 = ra.top + ra.height / 2 - box.top;
+        const ya = ra.top + ra.height / 2;
+        const out = ya < cl.top || ya > cl.bottom;
+        const x1 = (rowA ? ra.right : cl.right) - box.left;
+        const y1 = Math.min(Math.max(ya, cl.top), cl.bottom) - box.top;
         const x2 = rb.left - box.left;
         const y2 = rb.top + rb.height / 2 - box.top;
         const mid = (x1 + x2) / 2;
@@ -768,7 +807,7 @@ function openConnections(locId) {
         path.setAttribute("d", `M${x1},${y1} C${mid},${y1} ${mid},${y2} ${x2},${y2}`);
         // A line into a folded tube only points at it: open the tube to
         // work on that fiber.
-        const folded = !rowA || !rowB;
+        const folded = !rowA || !rowB || out;
         path.setAttribute("class", "cx-line " + c.kind + (folded ? " folded" : "") + (sel.has(c.to) ? " sel" : ""));
         const color = rowA ? rowA.style.background : keyColor(c.from);
         if (color) path.style.stroke = color;
@@ -832,10 +871,7 @@ function openConnections(locId) {
         drag = { key: end.dataset.key, side: end.dataset.side, choose: true, shift: e.shiftKey };
         return;
       }
-      const box = wrap.getBoundingClientRect();
-      const dot = end.querySelector(".cx-dot").getBoundingClientRect();
-      drag = { key: end.dataset.key, side: end.dataset.side, x: e.clientX, y: e.clientY, moved: false,
-        x0: (end.dataset.side === "L" ? dot.right : dot.left) - box.left, y0: dot.top + dot.height / 2 - box.top };
+      drag = { key: end.dataset.key, side: end.dataset.side, x: e.clientX, y: e.clientY, moved: false, dot: end.querySelector(".cx-dot") };
       wrap.setPointerCapture(e.pointerId);
     });
     wrap.addEventListener("pointermove", (e) => {
@@ -850,9 +886,11 @@ function openConnections(locId) {
         temp.setAttribute("class", "cx-temp");
         svg.append(temp);
       }
-      const x = e.clientX - box.left;
-      const y = e.clientY - box.top;
-      temp.setAttribute("d", `M${drag.x0},${drag.y0} L${x},${y}`);
+      // From where the row is now: one side may stay put while the other scrolls.
+      const dot = drag.dot.getBoundingClientRect();
+      const x0 = (drag.side === "L" ? dot.right : dot.left) - box.left;
+      const y0 = dot.top + dot.height / 2 - box.top;
+      temp.setAttribute("d", `M${x0},${y0} L${e.clientX - box.left},${e.clientY - box.top}`);
       // Keep the list moving when dragging near the top or bottom.
       const pr = formPanel.getBoundingClientRect();
       if (e.clientY > pr.bottom - 40) formPanel.scrollTop += 12;
