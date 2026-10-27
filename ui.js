@@ -225,16 +225,17 @@ function showNote(text, undo) {
 
 // Snapshot the plan, do `act`, and offer Undo. Undo puts the whole plan
 // back and closes any open dialog, since it showed the old state.
-function withUndo(text, act) {
+// `reopen` puts back the screen the user was on after an Undo.
+function withUndo(text, act, reopen = null) {
   const before = JSON.stringify(plan);
   const result = act();
   savePlan();
   renderRoute();
-  offerUndo(text, before);
+  offerUndo(text, before, reopen);
   return result;
 }
 
-function offerUndo(text, before) {
+function offerUndo(text, before, reopen = null) {
   showNote(text, () => {
     plan = migratePlan(JSON.parse(before));
     savePlan();
@@ -242,6 +243,7 @@ function offerUndo(text, before) {
     closeMenu();
     selectedId = null;
     if (typeof show === "function") show("route");
+    if (reopen) reopen();
     showNote("Undone.");
   });
 }
