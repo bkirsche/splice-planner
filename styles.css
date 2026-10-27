@@ -717,6 +717,9 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 }
 .cx-tube:hover, .cx-tube:focus-visible { background: var(--card); color: var(--text); outline: none; }
 .cx-tube.has .cx-tname { color: var(--text); }
+.cx-tube.cx-dragging { box-shadow: inset 0 0 0 2px var(--accent); }
+.cx-tube.cx-drop { box-shadow: inset 0 0 0 2px var(--accent); outline: 1px dashed var(--accent-2); outline-offset: 1px; }
+.cx-tube.cx-drop.on { background: color-mix(in srgb, var(--accent) 35%, var(--card-2)); color: var(--text); outline-style: solid; }
 .cx-chev { width: 14px; font-size: 1.05rem; line-height: 1; color: var(--text); }
 .cx-tube .cx-count { margin-left: auto; font-size: 0.74rem; }
 .cx-tube.has .cx-count { color: var(--accent-2); }

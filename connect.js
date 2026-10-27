@@ -556,7 +556,7 @@ function openConnections(locId) {
       const lines = [];
       if (closure) lines.push(`${eqLabel(closure)}: ${closure.trays} trays x ${closure.slots} splices.`);
       for (const t of through) lines.push(`${t.name} ${THROUGH_LABELS[t.through]} here (not spliced).`);
-      lines.push("Drag from the left to the right to connect, or tap one end and then the other. Tap a line or × to take it apart.");
+      lines.push("Drag from the left to the right to connect, or tap one end and then the other. Drag a folded tube onto a folded tube to splice it all at once. Tap a line or × to take it apart.");
       for (const l of lines) info.append(el("p", "hint", l));
       if (!incomingCable(locId) && L.id !== plan.points[0].id) {
         info.append(el("p", "hint warn", `No cable reaches ${L.name} yet. You can still look around and set things up here.`));
@@ -763,6 +763,15 @@ function openConnections(locId) {
                 }, "cx-link danger");
                 rm.title = `Take apart all ${list.length} connections in tube ${t}`;
                 th.append(rm);
+              }
+              // A folded tube drags onto a folded tube across: the whole tube.
+              if (folded) {
+                th.tubeDrop = { side, items, label: `tube ${t} · ${item.tube.name} of ${g.title}` };
+                th.addEventListener("pointerdown", (e) => startTubeDrag(e, th));
+                th.addEventListener("click", (e) => {
+                  if (tubeDragged) e.stopImmediatePropagation();
+                  tubeDragged = false;
+                });
               }
               foldToggle(th, !folded, () => {
                 folds.tubes.set(tubeKey(t), !folded);
@@ -1095,6 +1104,89 @@ function openConnections(locId) {
       if (end) join(d, { key: end.dataset.key, side: end.dataset.side });
       else render();
     });
+
+    // Drag a folded tube onto a folded tube on the other side to splice
+    // the whole tube: fiber 1 to 1, 2 to 2, up to the smaller tube.
+    // Fibers already spliced on either end are left alone. Open tubes
+    // keep the fiber-by-fiber drag above.
+    let tubeDragged = false;
+    function startTubeDrag(e, th) {
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.target.closest("button, input")) return;
+      e.preventDefault();
+      const src = th.tubeDrop;
+      const x = e.clientX;
+      const y = e.clientY;
+      let moved = false;
+      let over = null;
+      const targets = [...wrap.querySelectorAll(`.cx-${src.side === "L" ? "right" : "left"} .cx-tube.folded`)].filter((x) => x.tubeDrop);
+      const move = (ev) => {
+        if (!moved && Math.hypot(ev.clientX - x, ev.clientY - y) <= 6) return;
+        if (!moved) {
+          moved = true;
+          th.classList.add("cx-dragging");
+          for (const t of targets) t.classList.add("cx-drop");
+        }
+        const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+        const t = hit && hit.closest(".cx-tube.cx-drop");
+        if (t !== over) {
+          if (over) over.classList.remove("on");
+          over = t;
+          if (over) over.classList.add("on");
+        }
+        const box = wrap.getBoundingClientRect();
+        const svg = wrap.querySelector(".cx-lines");
+        let temp = svg.querySelector(".cx-temp");
+        if (!temp) {
+          temp = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          temp.setAttribute("class", "cx-temp");
+          svg.append(temp);
+        }
+        const r = th.getBoundingClientRect();
+        const x0 = (src.side === "L" ? r.right : r.left) - box.left;
+        temp.setAttribute("d", `M${x0},${r.top + r.height / 2 - box.top} L${ev.clientX - box.left},${ev.clientY - box.top}`);
+        const pr = formPanel.getBoundingClientRect();
+        if (ev.clientY > pr.bottom - 40) formPanel.scrollTop += 12;
+        if (ev.clientY < pr.top + 40) formPanel.scrollTop -= 12;
+      };
+      const up = () => {
+        removeEventListener("pointermove", move, true);
+        removeEventListener("pointerup", up, true);
+        removeEventListener("pointercancel", up, true);
+        if (!moved) return;
+        tubeDragged = true;
+        setTimeout(() => (tubeDragged = false), 0);
+        th.classList.remove("cx-dragging");
+        for (const t of targets) t.classList.remove("cx-drop", "on");
+        const temp = wrap.querySelector(".cx-temp");
+        if (temp) temp.remove();
+        if (over) spliceTubes(src, over.tubeDrop);
+      };
+      addEventListener("pointermove", move, true);
+      addEventListener("pointerup", up, true);
+      addEventListener("pointercancel", up, true);
+    }
+
+    function spliceTubes(a, b) {
+      const from = a.side === "L" ? a : b;
+      const to = a.side === "L" ? b : a;
+      const n = Math.min(from.items.length, to.items.length);
+      const pairs = [];
+      let skipped = 0;
+      for (let i = 0; i < n; i++) {
+        const f = from.items[i].key;
+        const t = to.items[i].key;
+        if (f.endsWith(":auto") || connAt("L", f) || connAt("R", t)) skipped++;
+        else pairs.push([f, t]);
+      }
+      const skip = skipped ? ` ${skipped} skipped, already spliced.` : "";
+      if (!pairs.length) return flash(`Nothing to splice: all ${n} fibers are already spliced.`);
+      withUndo(`Spliced ${from.label} to ${to.label}: ${pairs.length} fiber${pairs.length === 1 ? "" : "s"}.${skip}`, () => {
+        for (const [f, t] of pairs) connect(locId, f, t);
+      }, reopen);
+      sel.clear();
+      picked = null;
+      render();
+    }
 
     render();
     foot.append(btnEl("Splice sheet", () => openSpliceSheet(locId), "btn ghost push-left"), btnEl("Done", finish, "btn big"));
