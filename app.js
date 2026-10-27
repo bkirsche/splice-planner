@@ -639,6 +639,12 @@ function fanEl(paths) {
     if (c) row.dataset.wire = wireColor(c);
     const label = el("div", "fan-drop");
     label.title = `Drop to ${point(path.to).name}`;
+    label.addEventListener("contextmenu", (e) => {
+      if (e.defaultPrevented || typingIn(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openLineMenu(path.to, e);
+    });
     label.append(cableRows(path));
     row.append(label, branchEl(point(path.to)));
     rows.append(row);

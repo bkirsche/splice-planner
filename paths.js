@@ -769,6 +769,20 @@ function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
   const wrap = el("div", "fgrid");
   const msg = el("p", "hint fgrid-msg");
 
+  function freeTube(tube) {
+    return colorCode(inCable.fibers).filter((f) => f.tube === tube && !taken.has(f.number)).map((f) => f.number);
+  }
+
+  function clearSelection() {
+    sel.clear();
+    render();
+  }
+
+  function takeOff(n) {
+    const pairs = getPairs();
+    if (pairs.some((p) => p.out === n)) setPairs(pairs.filter((p) => p.out !== n));
+  }
+
   function render() {
     const pairs = getPairs();
     const outOf = new Map(pairs.map((p) => [p.in, p.out]));
@@ -789,8 +803,20 @@ function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
         if (cls === "in") {
           th.type = "button";
           th.title = "Select the free fibers in this tube";
+          th.addEventListener("contextmenu", (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const nums = freeTube(t);
+            const all = nums.length > 0 && nums.every((n) => sel.has(n));
+            openPopup(`Tube ${t} · ${tc.name}`, [
+              { icon: "select", label: all ? "Clear this tube" : "Select this tube", run: () => {
+                for (const n of nums) all ? sel.delete(n) : sel.add(n);
+                render();
+              } },
+            ], e);
+          });
           th.addEventListener("click", (e) => {
-            const nums = code.filter((f) => f.tube === t && !taken.has(f.number)).map((f) => f.number);
+            const nums = freeTube(t);
             const all = nums.every((n) => sel.has(n));
             // A plain click: just this tube. Ctrl or Shift: add it or drop it.
             if (!isAddClick(e) && !e.shiftKey) sel.clear();
@@ -832,10 +858,7 @@ function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
     const tools = el("div", "fgrid-tools");
     tools.append(el("span", "fgrid-count", sel.size ? `${sel.size} selected` : "Nothing selected"),
       btnEl("Put on the next free fibers", () => place(null), "btn ghost small"),
-      btnEl("Clear selection", () => {
-        sel.clear();
-        render();
-      }, "btn ghost small"));
+      btnEl("Clear selection", clearSelection, "btn ghost small"));
     wrap.append(cols, tools, msg);
   }
 
@@ -874,16 +897,42 @@ function fiberGrid({ inCable, outName, outFibers, taken, getPairs, setPairs }) {
     }
     if (sel.size) return place(n);
     // Take this fiber off the new cable.
-    const pairs = getPairs();
-    if (pairs.some((p) => p.out === n)) setPairs(pairs.filter((p) => p.out !== n));
+    takeOff(n);
   }
+
+  wrap.addEventListener("contextmenu", (e) => {
+    if (typingIn(e.target) || e.defaultPrevented) return;
+    const b = e.target.closest(".fcell");
+    if (!b || b.disabled) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const n = Number(b.dataset.n);
+    if (b.dataset.side === "out") {
+      if (getPairs().some((p) => p.out === n)) {
+        openPopup(`Fiber #${n}`, [
+          { icon: "remove", label: `Take #${n} off`, run: () => takeOff(n) },
+        ], e);
+      } else closeMenu();
+      return;
+    }
+    if (!sel.has(n)) tap(b, {});
+    const tube = colorCode(inCable.fibers).find((f) => f.number === n).tube;
+    openPopup(sel.size > 1 ? `${sel.size} selected` : `Fiber #${n}`, [
+      { icon: "move", label: "Put on the next free fibers", run: () => place(null) },
+      { icon: "select", label: "Select this tube's free fibers", run: () => {
+        for (const num of freeTube(tube)) sel.add(num);
+        render();
+      } },
+      { icon: "select", label: "Clear the selection", run: clearSelection },
+    ], e);
+  });
 
   // Drag from the left onto the right.
   let drag = null;
   let dragged = false;
   wrap.addEventListener("pointerdown", (e) => {
     const b = e.target.closest(".fcell.in");
-    if (!b || b.disabled) return;
+    if (e.button !== 0 || !b || b.disabled) return;
     drag = { b, x: e.clientX, y: e.clientY, moved: false, ghost: null, shift: e.shiftKey };
   });
   wrap.addEventListener("pointermove", (e) => {

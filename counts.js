@@ -548,6 +548,28 @@ function openHomeCounts(locId) {
           selectClick(ticked, order, h.id, e, tickAt);
           render();
         }, true);
+        row.addEventListener("contextmenu", (e) => {
+          if (typingIn(e.target)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          if (!ticked.has(h.id)) {
+            selectClick(ticked, order, h.id, {}, tickAt);
+            render();
+          }
+          openPopup(ticked.size > 1 ? `${ticked.size} selected` : h.name, [
+            { icon: "move", label: "Put on a port…", run: () => pickHome(h.id) },
+            { icon: "counts", label: "Counts back to automatic", run: backToAutomatic },
+            { icon: "remove", label: "Clear DS count", run: () => clearDs() },
+            { icon: "select", label: "Select all homes", run: () => {
+              for (const home of homes()) ticked.add(home.id);
+              render();
+            } },
+            { icon: "select", label: "Clear the selection", run: () => {
+              ticked.clear();
+              render();
+            } },
+          ], e);
+        });
         const handle = el("span", "hc-handle");
         handle.dataset.home = h.id;
         handle.title = "Drag onto a port, or tap and then tap a port";
@@ -594,25 +616,35 @@ function openHomeCounts(locId) {
       const startRow = el("label", "inline-field");
       startRow.append(el("span", "", "From port"), start);
       if (device) tools.append(startRow, btnEl("Fill DS in order", () => fill(device, Number(start.value)), "btn"));
-      tools.append(btnEl("Back to automatic", () => {
-        const chosen = chosenHomes();
-        withUndo(`${chosen.length} home${chosen.length === 1 ? "" : "s"} back to automatic counts.`, () => {
-          for (const h of chosen) {
-            h.dsManual = false;
-            delete h.ds;
-          }
-        });
-        render();
-      }, "btn ghost"), btnEl("No DS", () => {
-        const chosen = chosenHomes();
-        withUndo(`Cleared the DS count on ${chosen.length} home${chosen.length === 1 ? "" : "s"}.`, () => {
-          for (const h of chosen) {
-            delete h.ds;
-            h.dsManual = true;
-          }
-        });
-        render();
-      }, "btn ghost danger"));
+      tools.append(btnEl("Back to automatic", backToAutomatic, "btn ghost"),
+        btnEl("No DS", () => clearDs(), "btn ghost danger"));
+    }
+
+    function backToAutomatic() {
+      const chosen = chosenHomes();
+      withUndo(`${chosen.length} home${chosen.length === 1 ? "" : "s"} back to automatic counts.`, () => {
+        for (const h of chosen) {
+          h.dsManual = false;
+          delete h.ds;
+        }
+      });
+      render();
+    }
+
+    function clearDs(chosen = chosenHomes()) {
+      withUndo(`Cleared the DS count on ${chosen.length} home${chosen.length === 1 ? "" : "s"}.`, () => {
+        for (const h of chosen) {
+          delete h.ds;
+          h.dsManual = true;
+        }
+      });
+      render();
+    }
+
+    function pickHome(id, moving = false) {
+      picked = id;
+      say(picked ? (moving ? `Moving ${point(picked).name}: tap the port to put it on.` : `Tap a port for ${point(picked).name}.`) : "");
+      render();
     }
 
     // The selected homes, or every home when none are selected.
@@ -632,13 +664,31 @@ function openHomeCounts(locId) {
           dropOn(picked, tile);
           return;
         }
-        if (home) {
-          picked = home.id;
-          say(`Moving ${home.name}: tap the port to put it on.`);
-          render();
+        if (home) pickHome(home.id, true);
+      });
+      tile.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const items = [];
+        if (picked) {
+          const homeId = picked;
+          items.push({ icon: "move", label: `Put ${point(homeId).name} here`, run: () => dropOn(homeId, tile) });
         }
+        if (home) items.push({ icon: "remove", label: `Take ${home.name} off this port`, run: () => takeOffPort(home) });
+        if (!items.length) return closeMenu();
+        openPopup(`Port ${label}`, items, e);
       });
       return tile;
+    }
+
+    function takeOffPort(home) {
+      const device = findEquipment(deviceId);
+      if (picked === home.id) picked = null;
+      if (device.type === "splitter") return clearDs([home]);
+      withUndo(`Took ${home.name} off ${device.name}.`, () => {
+        delete home.tport;
+      });
+      render();
     }
 
     function dropOn(homeId, tile) {
@@ -701,7 +751,7 @@ function openHomeCounts(locId) {
     let drag = null;
     wrap.addEventListener("pointerdown", (e) => {
       const handle = e.target.closest(".hc-handle");
-      if (!handle) return;
+      if (e.button !== 0 || !handle) return;
       e.preventDefault();
       drag = { home: handle.dataset.home, x: e.clientX, y: e.clientY, moved: false, ghost: null };
       wrap.setPointerCapture(e.pointerId);
@@ -730,9 +780,7 @@ function openHomeCounts(locId) {
       drag = null;
       if (d.ghost) d.ghost.remove();
       if (!d.moved) {
-        picked = picked === d.home ? null : d.home;
-        say(picked ? `Tap a port for ${point(picked).name}.` : "");
-        return render();
+        return pickHome(picked === d.home ? null : d.home);
       }
       const under = document.elementFromPoint(e.clientX, e.clientY);
       const tile = under && under.closest(".port-tile");

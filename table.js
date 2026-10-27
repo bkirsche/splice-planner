@@ -35,6 +35,10 @@ function renderTable() {
     td.colSpan = cols;
     td.style.paddingLeft = `${12 + Math.min(routeDepth(L.id), 12) * 14}px`;
     const name = btnEl("", (e) => openMenu(L.id, e), "rt-name");
+    name.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      openMenu(L.id, e);
+    });
     name.append(iconEl((LOC_META[L.type] || {}).icon || "pin"), document.createTextNode(L.name));
     const bits = [typeLabel(L.type)];
     const c = incomingCable(L.id);
@@ -51,7 +55,12 @@ function renderTable() {
       row.dataset.id = h.id;
       const cell = el("td");
       cell.style.paddingLeft = `${30 + Math.min(routeDepth(L.id), 12) * 14}px`;
-      cell.append(btnEl(h.name, (e) => openMenu(h.id, e), "rt-home-btn"));
+      const home = btnEl(h.name, (e) => openMenu(h.id, e), "rt-home-btn");
+      home.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        openMenu(h.id, e);
+      });
+      cell.append(home);
       const s = homeSplitter(h);
       const drop = incomingCable(h.id);
       const tp = homeTerminalPort(h);

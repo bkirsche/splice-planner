@@ -212,6 +212,26 @@ function renderFeatures() {
         pickRow(r.id, e);
       } else if (e.target.closest(".fe-ro")) pickRow(r.id, e);
     });
+    tr.addEventListener("contextmenu", (e) => {
+      if (typingIn(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (!fe.picked.has(r.id)) pickRow(r.id, {});
+      openPopup(fe.picked.size > 1 ? `${fe.picked.size} selected` : feText(cols[0], r), [
+        { icon: "pin", label: "Show on the route", run: () => revealPoint(t.locOf(r)) },
+        { icon: "select", label: "Select every row shown", run: () => {
+          for (const row of rows) fe.picked.add(row.id);
+          renderFeatures();
+        } },
+        { icon: "select", label: "Clear the selection", run: () => {
+          fe.picked.clear();
+          renderFeatures();
+        } },
+        ...(editable.length ? [{ icon: "edit", label: `Set a value on ${fe.picked.size} selected…`, run: () => {
+          fePanel.querySelector(".fe-bulk select").focus();
+        } }] : []),
+      ], e);
+    });
     const td0 = el("td", "fe-tick");
     td0.append(num);
     tr.append(td0);
