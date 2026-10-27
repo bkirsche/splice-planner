@@ -130,7 +130,7 @@ function buildSpliceModel() {
   function fiberLabel(cable, n) {
     const f = colorCode(cable.fibers)[n - 1];
     const tube = tubeCount(cable.fibers) > 1 ? `${f.tubeColor.name} tube, ` : "";
-    return { text: `${cable.name} #${n}`, colors: `${tube}${f.fiberColor.name}`, fiber: f.fiberColor, tube: f.tubeColor };
+    return { text: `${cableLabel(cable)} #${n}`, colors: `${tube}${f.fiberColor.name}`, fiber: f.fiberColor, tube: f.tubeColor };
   }
 
   function splitterById(id) {
@@ -144,7 +144,7 @@ function buildSpliceModel() {
     if (kind === "home") return point(id) ? point(id).name : "home";
     if (kind === "split-in") {
       const hit = splitterById(id);
-      return hit ? `Feeds ${hit.s.name} at ${hit.p.name}` : "splitter";
+      return hit ? `Feeds ${eqLabel(hit.s)} at ${hit.p.name}` : "splitter";
     }
     if (kind === "dark") {
       const d = plan.cables.find((c) => c.id === id);
@@ -159,7 +159,7 @@ function buildSpliceModel() {
     if (item.startsWith("port:")) {
       const [, sid, port] = item.split(":");
       const s = splittersAt(L).find((x) => x.id === sid);
-      if (s) return { text: `${s.name} output ${port.startsWith("auto") ? "(no DS set)" : port}`, colors: "" };
+      if (s) return { text: `${eqLabel(s)} output ${port.startsWith("auto") ? "(no DS set)" : port}`, colors: "" };
     }
     const c = incomingCable(L.id);
     if (!c) {
@@ -197,7 +197,7 @@ function buildSpliceModel() {
       const sc = feederAt(locId, s);
       const from = s.f2 && sc && s.f2 <= sc.fibers ? fiberLabel(cableStart(sc), s.f2) : source(L, `split-in:${s.id}`);
       const via = s.tailIn && tailFeet(s) ? ` (${tailFeet(s)} ft tail)` : "";
-      rows.push({ from, to: { text: `${s.name} input${via}`, colors: "" }, note: f2Label(s), key: `split:${s.id}:in`,
+      rows.push({ from, to: { text: `${eqLabel(s)} input${via}`, colors: "" }, note: f2Label(s), key: `split:${s.id}:in`,
         phase: Math.max(phaseIdx(s), sc ? phaseIdx(sc) : 0),
         src: s.f2 && sc && s.f2 <= sc.fibers ? { kind: "fiber", n: s.f2 } : null, dst: { kind: "split", id: s.id } });
     }

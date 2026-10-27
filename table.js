@@ -40,7 +40,7 @@ function renderTable() {
     const c = incomingCable(L.id);
     if (c) bits.push(`${c.name} · ${c.fibers}F${cableKind(c) !== "cable" ? ` ${cableKindText(c).toLowerCase()}` : ""} from ${point(c.from).name}`);
     else if (L.id !== plan.points[0].id) bits.push(`from ${point(incomingPath(L.id).from).name}, no cable`);
-    for (const s of splittersAt(L)) bits.push(`${s.name} ${s.ratio} · ${f2Label(s)}`);
+    for (const s of splittersAt(L)) bits.push(`${eqLabel(s)} ${s.ratio} · ${f2Label(s)}`);
     if (homes.length) bits.push(plural(homes.length, "home"));
     td.append(name, el("span", "rt-sub", bits.join(" · ")));
     tr.append(td);
@@ -55,7 +55,7 @@ function renderTable() {
       const s = homeSplitter(h);
       const drop = incomingCable(h.id);
       const tp = homeTerminalPort(h);
-      row.append(cell, el("td", "mono", h.lot || "—"), el("td", "", s ? s.name : "—"),
+      row.append(cell, el("td", "mono", h.lot || "—"), el("td", "", s ? eqLabel(s) : "—"),
         el("td", "mono strong", s && s.f2 ? f2CellFor(s) : "—"), el("td", "mono strong", homeDs(h) ? dsCell(h) : "—"),
         el("td", "", drop ? `${drop.name} · ${drop.fibers}F` : "—"), ...(terms ? [el("td", "", tp ? tp.text : "—")] : []));
       body.append(row);

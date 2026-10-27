@@ -33,11 +33,11 @@ function traceHome(model, home) {
     let src = row.src;
     if (src && src.kind === "split") {
       const s = splittersAt(L).find((x) => x.id === src.id);
-      hops.unshift({ kind: "split", text: `${s ? s.name : "Splitter"} at ${L.name}`, colors: row.from.text.replace(/^.* output/, "output"), at: L.name });
+      hops.unshift({ kind: "split", text: `${s ? eqLabel(s) : "Splitter"} at ${L.name}`, colors: row.from.text.replace(/^.* output/, "output"), at: L.name });
       const inRow = rows.find((r) => r.dst && r.dst.kind === "split" && r.dst.id === src.id);
       if (!inRow || !inRow.src) {
         const top = L.id === plan.points[0].id;
-        return { hops, end: top ? `Splitter input at the start (${L.name}).` : `Nothing feeds ${s ? s.name : "the splitter"} at ${L.name}.`, ok: top };
+        return { hops, end: top ? `Splitter input at the start (${L.name}).` : `Nothing feeds ${s ? eqLabel(s) : "the splitter"} at ${L.name}.`, ok: top };
       }
       src = inRow.src;
     } else if (src) {

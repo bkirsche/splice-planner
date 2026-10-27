@@ -444,6 +444,13 @@ function nextCableName(kind, toHome) {
   return `${prefix} ${n + 1}`;
 }
 
+// A new cable's name: the location it runs to (cable A09613 goes to
+// handhole A09613). A drop to a home is still "Drop n".
+function cableNameFor(kind, toId) {
+  const to = point(toId);
+  return to && to.type !== "nid" ? to.name : nextCableName(kind, true);
+}
+
 function typeLabel(type) {
   return STOP_TYPES[type] || "Other";
 }
@@ -1052,21 +1059,21 @@ function equipFirstForm(type, fromId) {
       let tailStart = null;
       if (kind.value === "closure") {
         const t = templateById(template.value);
-        eq = fromTemplate(t, t.model);
+        eq = fromTemplate(t, name.value.trim());
         eq.trays = Math.max(1, Number(trays.value) || 1);
         eq.slots = Number(size.value);
       } else if (kind.value === "splitter") {
         const t = templateById(style.value);
         if (t.tails && !tail.value()) return "Enter the custom tail length in feet.";
         eq = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
-          name: `Splitter 1 (${ratio.value})`, f2: null, f2Manual: false };
+          name: name.value.trim(), f2: null, f2Manual: false };
         if (t.tails) {
           tailFt = tail.value();
           tailStart = tailFrom.value();
         }
       } else if (kind.value === "terminal") {
         const t = templateById(terminal.value);
-        eq = fromTemplate(t, t.model);
+        eq = fromTemplate(t, name.value.trim());
         if (type === "pedestal") {
           if (!termTail.value()) return "Enter the custom tail length in feet.";
           tailFt = termTail.value();
@@ -1153,7 +1160,7 @@ function renameStop(id) {
       if (!name.value.trim()) return "Enter a name.";
       const was = p.name;
       p.name = name.value.trim();
-      renameTails(p, was);
+      renameWithLocation(p, was);
       finish();
     });
     name.select();

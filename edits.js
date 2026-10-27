@@ -40,7 +40,7 @@ function openMove(id) {
           if (next) {
             delete next.through;
             delete next.prev;
-            const name = nextCableName("cable", false);
+            const name = cableNameFor("cable", cableSpans(next).at(-1).to);
             for (const s of cableSpans(next)) s.name = name;
           }
           continue;
@@ -51,7 +51,7 @@ function openMove(id) {
         if (x.through) {
           delete x.through;
           delete x.prev;
-          const name = nextCableName("cable", p.type === "nid");
+          const name = cableNameFor("cable", cableSpans(x).at(-1).to);
           for (const s of cableSpans(x)) s.name = name;
         }
       }

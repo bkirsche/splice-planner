@@ -299,7 +299,7 @@ function homeTerminalPort(home) {
   if (!home.tport) return null;
   const eq = findEquipment(home.tport.eqId);
   const port = eq && hasCards(eq) && terminalPorts(eq).find((x) => x.id === home.tport.portId);
-  return port ? { eq, port, text: `${eq.name} port ${port.name}` } : null;
+  return port ? { eq, port, text: `${eqLabel(eq)} port ${port.name}` } : null;
 }
 
 function putHomeOnTerminal(home, eq, portId) {
@@ -335,7 +335,7 @@ function homeCountEditor(home, changed) {
   const editor = el("span", "count-selects");
   const sSel = selectEl(list.map((x) => {
     const full = nextFreePort(x, home.id) === null;
-    return { value: x.id, label: `${f2Label(x)} · ${x.name}${full ? " (full)" : ""}`, disabled: full && x.id !== s.id };
+    return { value: x.id, label: `${f2Label(x)} · ${eqLabel(x)}${full ? " (full)" : ""}`, disabled: full && x.id !== s.id };
   }), s.id);
   sSel.title = "Splitter (F2)";
   const ports = [{ value: "", label: "No DS" }];
@@ -377,7 +377,7 @@ function terminalSelect(home, terms, changed) {
   for (const eq of terms) {
     for (const port of terminalPorts(eq)) {
       const other = plan.points.find((h) => h !== home && h.tport && h.tport.eqId === eq.id && h.tport.portId === port.id);
-      opts.push({ value: `${eq.id}|${port.id}`, label: `${eq.name} port ${port.name}${other ? ` (swap with ${other.name})` : ""}`, group: terms.length > 1 ? eq.name : undefined });
+      opts.push({ value: `${eq.id}|${port.id}`, label: `${eqLabel(eq)} port ${port.name}${other ? ` (swap with ${other.name})` : ""}`, group: terms.length > 1 ? eqLabel(eq) : undefined });
     }
   }
   const sel = selectEl(opts, home.tport && homeTerminalPort(home) ? `${home.tport.eqId}|${home.tport.portId}` : "");
@@ -410,7 +410,7 @@ function openCounts(id) {
         return;
       }
       box.append(el("div", "f2-big", [f2Label(s), homeDs(home)].filter(Boolean).join(" · ")),
-        el("div", "", `From ${s.name} at ${loc.name}` + (s.f2 && f2Colors(s) ? ` · ${f2Colors(s)}` : "")));
+        el("div", "", `From ${eqLabel(s)} at ${loc.name}` + (s.f2 && f2Colors(s) ? ` · ${f2Colors(s)}` : "")));
       body.append(box, el("p", "hint", "Locked counts are filled in by the app. Tap the lock to pick them yourself."));
       const changed = () => {
         savePlan();
@@ -506,7 +506,7 @@ function openHomeCounts(locId) {
       const device = devices.find((d) => d.id === deviceId);
       top.innerHTML = "";
       if (devices.length) {
-        const dSel = selectEl(devices.map((d) => ({ value: d.id, label: d.type === "splitter" ? `${d.name}${d.f2 ? ` · ${f2Label(d)}` : ""}` : `${d.name} (terminal)` })), deviceId);
+        const dSel = selectEl(devices.map((d) => ({ value: d.id, label: d.type === "splitter" ? `${eqLabel(d)}${d.f2 ? ` · ${f2Label(d)}` : ""}` : `${eqLabel(d)} (terminal)` })), deviceId);
         dSel.addEventListener("change", () => {
           deviceId = dSel.value;
           render();

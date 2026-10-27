@@ -42,13 +42,39 @@ function tailOwner(c) {
   return null;
 }
 
-// A renamed location takes its tails' names along, where they still had
-// the old one.
-function renameTails(loc, oldName) {
+// A renamed location takes its name along to what's named after it and
+// still has the old one: its equipment, their tails, and cables ending
+// there.
+function renameWithLocation(loc, oldName) {
   for (const eq of loc.equipment || []) {
+    if (eq.name === oldName) eq.name = loc.name;
     const c = tailCable(eq);
     if (c && c.name === oldName) for (const s of cableSpans(c)) s.name = loc.name;
   }
+  for (const c of plan.cables.filter((x) => x.to === loc.id && x.name === oldName && !nextSpan(x))) {
+    for (const s of cableSpans(c)) s.name = loc.name;
+  }
+}
+
+// A cable's name on splice sheets: a tail sharing its name with another
+// cable (tails are named after their location) says whose tail it is.
+function cableLabel(c) {
+  const start = cableStart(c);
+  const owner = cableKind(start) !== "cable" && tailOwner(start);
+  if (!owner || !plan.cables.some((x) => x !== start && x.name === start.name && !x.through)) return start.name;
+  return `${eqLabel(owner)} tail`;
+}
+
+// An item's name where it's listed: as named, unless something else at
+// its location has the same name (everything in C09610 is called C09610
+// by default); then with what it is, and a number among its own kind.
+function eqLabel(eq) {
+  const loc = equipmentLocation(eq.id);
+  const same = loc ? (loc.equipment || []).filter((x) => x.name === eq.name) : [];
+  if (same.length < 2) return eq.name;
+  const kin = same.filter((x) => x.type === eq.type && x.ratio === eq.ratio);
+  const what = eq.type === "splitter" ? `${eq.ratio} splitter` : (EQ_KINDS[eq.type] ? EQ_KINDS[eq.type].label : "item").toLowerCase();
+  return `${eq.name} ${what}${kin.length > 1 ? ` ${kin.indexOf(eq) + 1}` : ""}`;
 }
 
 // Where a terminal can have a tail: in a pedestal, or inside a splice
@@ -377,8 +403,8 @@ function openEquipment(locId, startKind) {
       tailBox.hidden = !(k === "splitter" ? t && t.tails : k === "terminal" && TERMINAL_TAIL_TYPES.includes(p.type));
       if (k === "splitter") fillRatios(ratio, t, t && t.ratios ? "1x8" : "1x32");
       picBox.replaceChildren(hardwarePicture(k, t));
-      if (t && t.kind === k && !nameTouched && k !== "splitter") name.value = t.model || EQ_KINDS[k].label;
-      if (k === "other" && !nameTouched) name.value = "";
+      // New equipment is named after its location unless named by hand.
+      if (!nameTouched) name.value = p.name;
       if (k === "splitter") {
         const planned = plannedF2();
         note.className = planned.error ? "error" : "hint";
@@ -408,10 +434,9 @@ function openEquipment(locId, startKind) {
           addError.hidden = false;
           return;
         }
-        let n = splittersAt(p).length;
         for (let i = 0; i < planned.n; i++) {
           const sp = { id: makeId(), type: "splitter", ratio: ratio.value, style: t.style,
-            name: `Splitter ${++n} (${ratio.value})`, f2: planned.list[i] || null, f2Manual: firstManual };
+            name: p.name, f2: planned.list[i] || null, f2Manual: firstManual };
           p.equipment.push(sp);
           if (t.tails) setTail(p, sp, tail.value(), tailFrom.value());
         }

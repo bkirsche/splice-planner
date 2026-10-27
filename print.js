@@ -512,7 +512,7 @@ function splitterTable() {
     const tr = el("tr");
     tr.append(
       el("td", "", p.name),
-      el("td", "strong", s.name + (tailText(s, p) ? ` · ${tailText(s, p)}` : "")),
+      el("td", "strong", eqLabel(s) + (tailText(s, p) ? ` · ${tailText(s, p)}` : "")),
       el("td", "strong", s.f2 ? f2CellFor(s) : "not set"),
       el("td", "", f2Colors(s) || "—"),
       el("td", "", `${usedPorts(s).size} of ${splitterPorts(s)}`),
@@ -689,7 +689,7 @@ function locationPage(model, L, n, total) {
   if (lines.length) names.append(el("div", "loc-sub", lines.join(" · ")));
   // Splitters and terminals spliced right here, tail and all.
   for (const eq of (L.equipment || []).filter((x) => x.tailIn && tailFeet(x))) {
-    names.append(el("div", "loc-sub", `${eq.name}: ${tailText(eq, L)}${closure ? `, spliced in ${closure.name}` : ""}`));
+    names.append(el("div", "loc-sub", `${eqLabel(eq)}: ${tailText(eq, L)}${closure ? `, spliced in ${eqLabel(closure)}` : ""}`));
   }
   const meta = el("div", "loc-meta");
   meta.append(blanks(), el("b", "", `Location ${n} of ${total}`));
@@ -895,7 +895,7 @@ function bigPicture(L, rows) {
       homeY.set(d.id, { x, y });
       marks.append(svgEl("line", { x1: x, y1: y, x2: x + 26, y2: y, stroke: INK, "stroke-width": 2.5 }));
       const t = text(x + 32, y + 5, "", { "font-size": 14.5 });
-      t.append(svgEl("tspan", { "font-weight": 700 }, h.name), svgEl("tspan", { fill: INK_2 }, [homeF2(h) && `F2 ${f2CellFor(homeF2(h))}`, homeDs(h), d.name].filter(Boolean).map((s) => `  ·  ${s}`).join("")));
+      t.append(svgEl("tspan", { "font-weight": 700 }, h.name), svgEl("tspan", { fill: INK_2 }, [homeF2(h) && `F2 ${f2CellFor(homeF2(h))}`, homeDs(h), eqLabel(d)].filter(Boolean).map((s) => `  ·  ${s}`).join("")));
       marks.append(t);
     });
   }
@@ -943,7 +943,8 @@ function bigPicture(L, rows) {
       splitY.set(s.id, y + SPLIT_BOX_H / 2);
       splitBoxes.push({ x0: SX0, y0: y, x1: SX1, y1: y + SPLIT_BOX_H });
       const mid = (SX0 + SX1) / 2;
-      const name = s.name && !s.name.includes(s.ratio) ? `${s.name} · ${s.ratio}` : s.name || s.ratio;
+      const label = s.name ? eqLabel(s) : "";
+      const name = label && !label.includes(s.ratio) ? `${label} · ${s.ratio}` : label || s.ratio;
       const style = s.style && s.style.length > 40 ? s.style.slice(0, 39) + "…" : s.style;
       splitG.append(svgEl("rect", { x: SX0, y, width: SX1 - SX0, height: SPLIT_BOX_H, rx: 10, fill: "#eef6f0", stroke: SPLIT_INK, "stroke-width": 3 }));
       splitG.append(text(mid, y + 25, name, { "text-anchor": "middle", "font-weight": 800, "font-size": 17, fill: SPLIT_INK }));
@@ -1174,7 +1175,7 @@ function homesHereTable(L) {
     tr.append(el("td", "strong", hasAddress(h) ? h.name : "No address yet"), el("td", "mono", h.lot || "—"),
       el("td", "", c ? `${c.name} (${c.fibers}F)` : "—"), el("td", "mono strong", f2 ? f2CellFor(f2) : "—"),
       el("td", "mono strong", homeDs(h) ? dsCell(h) : "—"),
-      ...(terms ? [el("td", "", homeTerminalPort(h) ? homeTerminalPort(h).port.name + " · " + homeTerminalPort(h).eq.name : "—")] : []),
+      ...(terms ? [el("td", "", homeTerminalPort(h) ? homeTerminalPort(h).port.name + " · " + eqLabel(homeTerminalPort(h).eq) : "—")] : []),
       el("td", "checkbox-cell", "☐"));
     table.append(tr);
   }

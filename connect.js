@@ -63,13 +63,13 @@ function endpointLabel(key) {
   const eq = findEquipment(id);
   if (!eq) return "(removed equipment)";
   if (kind === "split") {
-    if (sub === "in") return `${eq.name} input`;
-    if (sub === "auto") return `${eq.name} output (no DS set)`;
-    return `${eq.name} output ${sub}`;
+    if (sub === "in") return `${eqLabel(eq)} input`;
+    if (sub === "auto") return `${eqLabel(eq)} output (no DS set)`;
+    return `${eqLabel(eq)} output ${sub}`;
   }
   for (const card of eq.cards || []) {
     const port = card.ports.find((x) => x.id === sub);
-    if (port) return `${eq.name}, ${card.name}, port ${port.name}`;
+    if (port) return `${eqLabel(eq)}, ${card.name}, port ${port.name}`;
   }
   return "(removed port)";
 }
@@ -127,13 +127,13 @@ function endpointGroups(locId) {
   };
   for (const eq of L.equipment || []) {
     if (eq.type === "splitter") {
-      const outs = { title: `${eq.name} outputs`, items: [] };
+      const outs = { title: `${eqLabel(eq)} outputs`, items: [] };
       for (let n = 1; n <= splitterPorts(eq); n++) outs.items.push({ key: `split:${eq.id}:${n}`, label: `Out ${n}` });
       left.push(outs);
-      right.push({ title: `${eq.name}`, items: [{ key: `split:${eq.id}:in`, label: "Input" }] });
+      right.push({ title: `${eqLabel(eq)}`, items: [{ key: `split:${eq.id}:in`, label: "Input" }] });
     }
     if (hasCards(eq)) {
-      const g = { title: eq.name, items: [] };
+      const g = { title: eqLabel(eq), items: [] };
       for (const card of eq.cards) for (const port of card.ports) g.items.push({ key: `port:${eq.id}:${port.id}`, label: port.name, sub: card.name });
       left.push(g);
       // An OLT only sends; panels and terminals pass light through.
@@ -400,7 +400,7 @@ function openConnections(locId) {
       info.innerHTML = "";
       const through = childCables(locId).filter((x) => x.through);
       const lines = [];
-      if (closure) lines.push(`${closure.name}: ${closure.trays} trays x ${closure.slots} splices.`);
+      if (closure) lines.push(`${eqLabel(closure)}: ${closure.trays} trays x ${closure.slots} splices.`);
       for (const t of through) lines.push(`${t.name} ${THROUGH_LABELS[t.through]} here (not spliced).`);
       lines.push("Drag from the left to the right to connect, or tap one end and then the other. Tap a line or × to take it apart.");
       for (const l of lines) info.append(el("p", "hint", l));
@@ -538,7 +538,7 @@ function openConnections(locId) {
       for (const c of conns.filter((x) => x.from.endsWith(":auto"))) {
         if (!colL.querySelector(`[data-key="${CSS.escape(c.from)}"]`)) {
           const s = findEquipment(c.from.split(":")[1]);
-          const g = [...colL.querySelectorAll(".cx-group")].find((x) => x.firstChild.textContent === `${s.name} outputs`);
+          const g = [...colL.querySelectorAll(".cx-group")].find((x) => x.firstChild.textContent === `${eqLabel(s)} outputs`);
           (g || colL).append(endRow({ key: c.from, label: "No DS" }, "L"));
         }
       }

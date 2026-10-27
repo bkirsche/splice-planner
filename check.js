@@ -102,7 +102,7 @@ function checkPlan() {
         if (seen.has(at)) problem(p.id, `Tray ${ts.tray} slot ${ts.slot} at ${p.name} holds two splices: ${endpointLabel(seen.get(at))} and ${endpointLabel(key)}.`);
         seen.set(at, key);
         if (closure && (ts.tray > closure.trays || ts.slot > closure.slots)) {
-          problem(p.id, `${closure.name} at ${p.name} has ${closure.trays} trays of ${closure.slots}, but a splice is in tray ${ts.tray} slot ${ts.slot}.`);
+          problem(p.id, `${eqLabel(closure)} at ${p.name} has ${closure.trays} trays of ${closure.slots}, but a splice is in tray ${ts.tray} slot ${ts.slot}.`);
         }
       }
       // Don't jump trays: one tube's splices belong in one tray.
@@ -112,23 +112,23 @@ function checkPlan() {
         }
       }
       if (closure && closure.max && keys.length > closure.max) {
-        problem(p.id, `${closure.name} at ${p.name} holds at most ${closure.max} splices, but ${keys.length} are planned.`);
+        problem(p.id, `${eqLabel(closure)} at ${p.name} holds at most ${closure.max} splices, but ${keys.length} are planned.`);
       }
     }
 
     for (const s of splittersAt(p)) {
-      if (!s.f2) problem(p.id, `${s.name} at ${p.name} has no F2 count.`);
+      if (!s.f2) problem(p.id, `${eqLabel(s)} at ${p.name} has no F2 count.`);
       else if (arriving && s.f2 > arriving.fibers) {
-        problem(p.id, `${s.name} at ${p.name} is on F2 ${s.f2}, but ${arriving.name} only has ${arriving.fibers} fibers.`);
+        problem(p.id, `${eqLabel(s)} at ${p.name} is on F2 ${s.f2}, but ${arriving.name} only has ${arriving.fibers} fibers.`);
       } else if (arriving && f2Problem(p, s, s.f2)) {
-        problem(p.id, `${s.name} at ${p.name}: ${f2Problem(p, s, s.f2)}`);
+        problem(p.id, `${eqLabel(s)} at ${p.name}: ${f2Problem(p, s, s.f2)}`);
       }
       const homes = plan.points.filter((h) => h.type === "nid" && homeSplitter(h) === s);
       if (homes.length > splitterPorts(s)) {
-        problem(p.id, `${s.name} at ${p.name} feeds ${homes.length} homes but only has ${splitterPorts(s)} ports.`);
+        problem(p.id, `${eqLabel(s)} at ${p.name} feeds ${homes.length} homes but only has ${splitterPorts(s)} ports.`);
       }
       // A cascade splitter feeds other splitters instead.
-      if (!homes.length && !isCascade(s)) warn(p.id, `${s.name} at ${p.name} doesn't feed any homes.`);
+      if (!homes.length && !isCascade(s)) warn(p.id, `${eqLabel(s)} at ${p.name} doesn't feed any homes.`);
     }
 
     // Bigger cable than the one feeding it: allowed, but often a mistake.
@@ -142,17 +142,17 @@ function checkPlan() {
       if (!arriving) warn(p.id, `${p.name} has no drop cable yet.`);
       const s = homeSplitter(p);
       if (!s) warn(p.id, `${p.name} has no splitter feeding it, so it has no F2 count.`);
-      else if (!s.f2) problem(p.id, `${p.name} has no F2 count because ${s.name} has none.`);
+      else if (!s.f2) problem(p.id, `${p.name} has no F2 count because ${eqLabel(s)} has none.`);
       if (p.ds) {
         if (!s || p.ds.splitterId !== s.id) problem(p.id, `${p.name} has a DS count on a splitter that no longer feeds it.`);
-        else if (p.ds.port > splitterPorts(s)) problem(p.id, `${p.name} is on DS ${p.ds.port}, but ${s.name} only has ${splitterPorts(s)} ports.`);
+        else if (p.ds.port > splitterPorts(s)) problem(p.id, `${p.name} is on DS ${p.ds.port}, but ${eqLabel(s)} only has ${splitterPorts(s)} ports.`);
         else {
           const key = s.id + ":" + p.ds.port;
           const sharing = plan.points.filter((h) => h.type === "nid" && h.ds && h.ds.splitterId === s.id && h.ds.port === p.ds.port);
           if (sharing.length > 1 && !clashed.has(key)) {
             clashed.add(key);
             const names = sharing.slice(0, 3).map((h) => h.name).join(", ") + (sharing.length > 3 ? ` and ${sharing.length - 3} more` : "");
-            problem(p.id, `${sharing.length} homes are on DS ${p.ds.port} of ${s.name}: ${names}.`);
+            problem(p.id, `${sharing.length} homes are on DS ${p.ds.port} of ${eqLabel(s)}: ${names}.`);
           }
         }
       }

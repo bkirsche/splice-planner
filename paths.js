@@ -257,10 +257,13 @@ function openPath(toId, cableId) {
     const own = c && !c.through ? c : null;
     // A tail is named after the location of its splitter or terminal.
     const ownerLoc = own && tailOwner(own) && equipmentLocation(tailOwner(own).id);
+    // Otherwise it's named after where it ends (cable A09613 ends in A09613).
+    const endId = own ? cableSpans(own).at(-1).to : to.id;
     const defaultName = () => (ownerLoc && (own.kind || "cable") === kind.value ? ownerLoc.name
-      : own && (own.kind || "cable") === kind.value && AUTO_CABLE_NAME.test(own.name) ? own.name : nextCableName(kind.value, toHome));
+      : own && (own.kind || "cable") === kind.value && AUTO_CABLE_NAME.test(own.name) ? own.name : cableNameFor(kind.value, endId));
     const name = inputEl("text", own ? own.name : defaultName());
-    let nameManual = !!own && !AUTO_CABLE_NAME.test(own.name) && !(ownerLoc && own.name === ownerLoc.name);
+    let nameManual = !!own && !AUTO_CABLE_NAME.test(own.name) && !(ownerLoc && own.name === ownerLoc.name) &&
+      own.name !== cableNameFor(own.kind || "cable", endId);
     const nameBox = el("div");
     const renderName = () => {
       if (!nameManual) name.value = defaultName();
@@ -693,7 +696,7 @@ function insertStopForm(path) {
         { value: "storage", label: `${c.name}, slack stored` },
         { value: "splice", label: `${c.name} is spliced (a new cable starts)` },
       ], "pass");
-      cableName = inputEl("text", nextCableName("cable", false));
+      cableName = inputEl("text", cableNameFor("cable", cableSpans(c).at(-1).to));
       const nameRow = fieldEl("Name of the cable leaving the splice", cableName);
       const sync = () => (nameRow.hidden = what.value !== "splice");
       what.addEventListener("change", sync);
