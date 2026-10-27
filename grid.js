@@ -320,13 +320,7 @@ function routeLattice(cards) {
     }
     return [...out].map((v) => Math.round(v * 10) / 10).sort((p, q) => p - q).filter((v, i, s) => i === 0 || v !== s[i - 1]);
   };
-  const spots = (c, along) => {
-    const mid = along === "x" ? c.cx : c.cy;
-    const half = (along === "x" ? c.r - c.l : c.b - c.t) / 2 - 6;
-    const out = [];
-    for (let k = -3; k <= 3; k++) if (Math.abs(k * ROUTE_LANE) <= half) out.push(mid + k * ROUTE_LANE);
-    return out;
-  };
+  const spots = (c, along) => (along === "x" ? sideSpots(c.l, c.r) : sideSpots(c.t, c.b)).map((s) => s.v);
   const xs = axis(lo.x, hi.x, inflated.map((c) => [c.l, c.r]), cards.flatMap((c) => spots(c, "x")));
   const ys = axis(lo.y, hi.y, inflated.map((c) => [c.t, c.b]), cards.flatMap((c) => spots(c, "y")));
   const nx = xs.length;
@@ -393,19 +387,26 @@ function sidePorts(lat, c) {
     const j = lat.idx(lat.ys, y);
     if (i >= 0 && j >= 0 && !lat.closed[j * lat.nx + i]) out.push({ n: j * lat.nx + i, dir, edge: { x: ex, y: ey }, off: Math.abs(k) });
   };
-  for (let k = -3; k <= 3; k++) {
-    const dy = k * ROUTE_LANE;
-    if (Math.abs(dy) <= (c.b - c.t) / 2 - 6) {
-      add(c.r + g, c.cy + dy, 0, c.r, c.cy + dy, k);
-      add(c.l - g, c.cy + dy, 2, c.l, c.cy + dy, k);
-    }
-    const dx = k * ROUTE_LANE;
-    if (Math.abs(dx) <= (c.r - c.l) / 2 - 6) {
-      add(c.cx + dx, c.b + g, 1, c.cx + dx, c.b, k);
-      add(c.cx + dx, c.t - g, 3, c.cx + dx, c.t, k);
-    }
+  for (const { v: y, off } of sideSpots(c.t, c.b)) {
+    add(c.r + g, y, 0, c.r, y, off);
+    add(c.l - g, y, 2, c.l, y, off);
+  }
+  for (const { v: x, off } of sideSpots(c.l, c.r)) {
+    add(x, c.b + g, 1, x, c.b, off);
+    add(x, c.t - g, 3, x, c.t, off);
   }
   return out;
+}
+
+// The spots along one side of a card (from lo to hi) where lines meet it,
+// nearest the middle first: up to seven, on lanes shared by every card
+// (whole multiples of ROUTE_LANE), so cards side by side line up and a
+// line between them runs dead straight instead of jogging a few pixels.
+function sideSpots(lo, hi) {
+  const mid = (lo + hi) / 2;
+  const out = [];
+  for (let v = Math.ceil((lo + 6) / ROUTE_LANE) * ROUTE_LANE; v <= hi - 6; v += ROUTE_LANE) out.push({ v, off: Math.round(Math.abs(v - mid) / ROUTE_LANE) });
+  return out.sort((p, q) => Math.abs(p.v - mid) - Math.abs(q.v - mid)).slice(0, 7);
 }
 
 // A* over (lattice point, heading).
