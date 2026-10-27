@@ -28,28 +28,79 @@ function downloadFile(name, blob) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-// On a phone this opens the share sheet (Messages, Mail, Files ...);
-// elsewhere, or if that isn't allowed, the file downloads.
+// Saves a file the way this device can. On a phone this opens the share
+// sheet (Messages, Mail, Files ...). Chrome and Edge open a "Save as"
+// window to pick the folder and name. Elsewhere (Firefox) the file
+// downloads, and the first time a tip says how to get Firefox to ask.
+// Resolves to the saved file's name, or null if the user cancelled.
+// `type`: { description, mime, ext }.
+async function saveFileAs(name, blob, type) {
+  const touch = matchMedia("(pointer: coarse)").matches;
+  if (touch && navigator.canShare) {
+    try {
+      const file = new File([blob], name, { type: type.mime });
+      if (navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: plan.title || type.description });
+        return name;
+      }
+    } catch (err) {
+      if (err && err.name === "AbortError") return null;
+    }
+  }
+  if ("showSaveFilePicker" in window) {
+    let handle;
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: type.description, accept: { [type.mime]: [type.ext] } }],
+      });
+    } catch (err) {
+      if (err && err.name === "AbortError") return null;
+      handle = null;
+    }
+    if (handle) {
+      const out = await handle.createWritable();
+      await out.write(blob);
+      await out.close();
+      return handle.name;
+    }
+  }
+  downloadFile(name, blob);
+  return name;
+}
+
+const SAVE_TIP_KEY = "splicePlanner.saveAsTipShown";
+
+// Firefox has no "Save as" window for web apps, but it can be told to
+// ask where every download goes. Said once per device.
+function saveAsTip() {
+  if ("showSaveFilePicker" in window || matchMedia("(pointer: coarse)").matches) return "";
+  try {
+    if (localStorage.getItem(SAVE_TIP_KEY)) return "";
+    localStorage.setItem(SAVE_TIP_KEY, "1");
+  } catch {
+    return "";
+  }
+  const where = /Firefox\//.test(navigator.userAgent)
+    ? "In Firefox: Settings, General, Downloads: turn on \"Always ask you where to save files\""
+    : "Turn on \"Ask where to save each file\" in this browser's download settings";
+  return ` It went to your Downloads folder. To pick the folder and name each time: ${where}.`;
+}
+
 // Field crews save too: their notes and as-builts go back in the file.
 document.getElementById("share-plan").addEventListener("click", async () => {
   if (emptyBlocked()) return;
   savePlan();
-  const name = planFileName();
   const blob = new Blob([planFileText()], { type: "application/json" });
-  const touch = matchMedia("(pointer: coarse)").matches;
-  if (touch && navigator.canShare) {
-    try {
-      const file = new File([blob], name, { type: "application/json" });
-      if (navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: plan.title || "Splice plan" });
-        return showNote(`Saved ${name}.`);
-      }
-    } catch (err) {
-      if (err && err.name === "AbortError") return;
-    }
+  let name;
+  try {
+    name = await saveFileAs(planFileName(), blob, { description: "Splice plan", mime: "application/json", ext: PLAN_EXT });
+  } catch {
+    return showNote("Couldn't save the file. Try again, or pick another folder.");
   }
-  downloadFile(name, blob);
-  showNote(`Saved ${name}. Send that file to share the plan.`);
+  if (!name) return;
+  const tip = saveAsTip();
+  showNote(`Saved ${name}. Send that file to share the plan.${tip}`, null, tip ? 20000 : 0);
 });
 
 // --- Opening ---

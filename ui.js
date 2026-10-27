@@ -206,7 +206,7 @@ undoBar.setAttribute("role", "status");
 document.body.append(undoBar);
 let undoTimer = null;
 
-function showNote(text, undo) {
+function showNote(text, undo, ms = 0) {
   clearTimeout(undoTimer);
   undoBar.innerHTML = "";
   undoBar.append(el("span", "undo-text", text));
@@ -220,7 +220,7 @@ function showNote(text, undo) {
   x.setAttribute("aria-label", "Dismiss");
   undoBar.append(x);
   undoBar.hidden = false;
-  undoTimer = setTimeout(() => (undoBar.hidden = true), undo ? 10000 : 6000);
+  undoTimer = setTimeout(() => (undoBar.hidden = true), ms || (undo ? 10000 : 6000));
 }
 
 // Snapshot the plan, do `act`, and offer Undo. Undo puts the whole plan
