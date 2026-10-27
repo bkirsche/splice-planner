@@ -196,7 +196,8 @@ function buildSpliceModel() {
     for (const s of here) {
       const sc = feederAt(locId, s);
       const from = s.f2 && sc && s.f2 <= sc.fibers ? fiberLabel(cableStart(sc), s.f2) : source(L, `split-in:${s.id}`);
-      rows.push({ from, to: { text: `${s.name} input`, colors: "" }, note: f2Label(s), key: `split:${s.id}:in`,
+      const via = s.tailIn && tailFeet(s) ? ` (${tailFeet(s)} ft tail)` : "";
+      rows.push({ from, to: { text: `${s.name} input${via}`, colors: "" }, note: f2Label(s), key: `split:${s.id}:in`,
         phase: Math.max(phaseIdx(s), sc ? phaseIdx(sc) : 0),
         src: s.f2 && sc && s.f2 <= sc.fibers ? { kind: "fiber", n: s.f2 } : null, dst: { kind: "split", id: s.id } });
     }

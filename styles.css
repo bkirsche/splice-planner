@@ -303,6 +303,7 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 }
 .chip.count { background: color-mix(in srgb, var(--accent) 20%, var(--card)); color: #bcdcfb; }
 .chip.through { background: color-mix(in srgb, var(--ok) 18%, var(--card)); color: #b7ecd2; white-space: normal; max-width: 100%; }
+.chip.tail-in { background: color-mix(in srgb, var(--wire) 20%, var(--card)); color: var(--text); box-shadow: inset 3px 0 0 var(--wire); }
 
 /* + on the card's right edge: add the next location */
 .stop-wrap { position: relative; display: flex; align-items: center; flex: 0 0 auto; }

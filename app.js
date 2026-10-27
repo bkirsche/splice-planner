@@ -742,7 +742,15 @@ function stopEl(p) {
   card.append(badge, kind, el("span", "name", p.name));
   if (p.type === "nid" && p.lot && hasAddress(p)) card.append(el("span", "lot", lotName(p.lot)));
   const chips = el("span", "chips");
-  for (const eq of p.equipment || []) chips.append(el("span", "chip", equipmentChip(eq)));
+  for (const eq of p.equipment || []) {
+    // A tail spliced right here wears its tail color.
+    const chip = el("span", "chip" + (eq.tailIn && tailFeet(eq) ? " tail-in" : ""), equipmentChip(eq));
+    if (eq.tailIn && tailFeet(eq)) {
+      chip.style.setProperty("--wire", WIRE_COLORS[tailKind(p, eq)] || WIRE_COLORS["splitter-tail"]);
+      chip.title = `${eq.name}: ${tailText(eq, p)}, spliced here`;
+    }
+    chips.append(chip);
+  }
   if (p.type === "nid") {
     const f2 = homeF2(p);
     if (f2) chips.append(countChip(f2Label(f2)));
@@ -1007,7 +1015,7 @@ function equipFirstForm(type, fromId) {
     const style = selectEl(templatesFor("splitter").map((t) => ({ value: t.id, label: t.label })), type === "pedestal" ? "sp-clamshell" : "sp-bare");
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x8");
     const tail = tailLengthField();
-    const tailFrom = tailStartField(fromId);
+    const tailFrom = tailStartField(fromId, null, null, "here");
     const splitTail = el("div");
     splitTail.append(tail.el, tailFrom.el);
     const splitGrid = el("div", "form-grid");
@@ -1024,7 +1032,7 @@ function equipFirstForm(type, fromId) {
     // Terminal: the model, and in a pedestal its tail.
     const terminal = selectEl(templatesFor("terminal").map((t) => ({ value: t.id, label: t.label, group: t.group })), "mst-8");
     const termTail = tailLengthField();
-    const termFrom = tailStartField(fromId);
+    const termFrom = tailStartField(fromId, null, null, "here");
     const termBits = el("div");
     termBits.append(fieldEl("Terminal", terminal));
     if (type === "pedestal") termBits.append(termTail.el, termFrom.el);

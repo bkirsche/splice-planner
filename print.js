@@ -512,7 +512,7 @@ function splitterTable() {
     const tr = el("tr");
     tr.append(
       el("td", "", p.name),
-      el("td", "strong", s.name),
+      el("td", "strong", s.name + (tailText(s, p) ? ` · ${tailText(s, p)}` : "")),
       el("td", "strong", s.f2 ? f2CellFor(s) : "not set"),
       el("td", "", f2Colors(s) || "—"),
       el("td", "", `${usedPorts(s).size} of ${splitterPorts(s)}`),
@@ -687,6 +687,10 @@ function locationPage(model, L, n, total) {
   names.append(el("h2", "", L.name), el("div", "loc-sub", sub));
   const lines = [...detailLines(L), ...fieldLines(L)];
   if (lines.length) names.append(el("div", "loc-sub", lines.join(" · ")));
+  // Splitters and terminals spliced right here, tail and all.
+  for (const eq of (L.equipment || []).filter((x) => x.tailIn && tailFeet(x))) {
+    names.append(el("div", "loc-sub", `${eq.name}: ${tailText(eq, L)}${closure ? `, spliced in ${closure.name}` : ""}`));
+  }
   const meta = el("div", "loc-meta");
   meta.append(blanks(), el("b", "", `Location ${n} of ${total}`));
   top.append(badge, names, meta, brandEl("small"));

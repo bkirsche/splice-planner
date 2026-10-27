@@ -18,12 +18,14 @@ function hasCards(eq) {
 // pre-attached, run back to where it's spliced: the location feeding it,
 // or one further back, passing through the ones between. The tail is a
 // cable of its own (kind "splitter-tail" or "terminal-tail") with its
-// length in tailFt on its first span; eq.tail points at that span. At
-// the first location (no path in) the length waits in eq.tailFt.
+// length in tailFt on its first span; eq.tail points at that span. A
+// tail spliced in its own location (to the splice case beside it) has no
+// cable: its length is eq.tailFt, with eq.tailIn set. At the first
+// location (no path in) the length waits in eq.tailFt too.
 
 function tailKind(loc, eq) {
   if (eq.type === "splitter" && TEMPLATES.some((t) => t.tails && t.style === eq.style)) return "splitter-tail";
-  if (eq.type === "terminal" && loc.type === "pedestal") return "terminal-tail";
+  if (eq.type === "terminal" && TERMINAL_TAIL_TYPES.includes(loc.type)) return "terminal-tail";
   return null;
 }
 
@@ -49,6 +51,17 @@ function renameTails(loc, oldName) {
   }
 }
 
+// Where a terminal can have a tail: in a pedestal, or inside a splice
+// location next to its splice case.
+const TERMINAL_TAIL_TYPES = ["pedestal", "handhole", "vault", "manhole"];
+
+// "100 ft tail inside C09610" / "100 ft tail": for chips and sheets.
+function tailText(eq, loc) {
+  const ft = tailFeet(eq);
+  if (!ft) return "";
+  return eq.tailIn ? `${ft} ft tail inside${loc ? ` ${loc.name}` : ""}` : `${ft} ft tail`;
+}
+
 function tailFeet(eq) {
   const c = tailCable(eq);
   return c ? c.tailFt || null : eq.tailFt || null;
@@ -68,14 +81,17 @@ function tailStarts(fromId, toId) {
 }
 
 // "Tail starts at": shown when there's more than one place to start.
+// With inside (the location's id, or "here" for one not made yet) it
+// also offers a tail spliced right there, never leaving the location.
 // Returns { el, value() } with the location id.
-function tailStartField(fromId, current, toId) {
+function tailStartField(fromId, current, toId, inside) {
   const ids = fromId ? tailStarts(fromId, toId) : [];
-  const pick = selectEl(ids.map((id, i) => ({ value: id,
-    label: i ? `${point(id).name}, through ${routeBetween(id, fromId).slice(1).map((x) => point(x).name).join(", ")}` : point(id).name })),
-    ids.includes(current) ? current : ids[0]);
+  const opts = ids.map((id, i) => ({ value: id,
+    label: i ? `${point(id).name}, through ${routeBetween(id, fromId).slice(1).map((x) => point(x).name).join(", ")}` : point(id).name }));
+  if (inside) opts.unshift({ value: inside, label: `Inside ${point(inside) ? point(inside).name : "this location"} (spliced right here)` });
+  const pick = selectEl(opts, opts.some((o) => o.value === current) ? current : (ids[0] || inside));
   const box = fieldEl("Tail starts at", pick);
-  box.hidden = ids.length < 2;
+  box.hidden = opts.length < 2;
   return { el: box, value: () => pick.value || null };
 }
 
@@ -84,6 +100,14 @@ function tailStartField(fromId, current, toId) {
 // first span starts the tail, the rest pass through.
 function setTail(loc, eq, feet, startId) {
   const old = tailCable(eq);
+  if (startId === loc.id || startId === "here") {
+    if (old) removeCableFrom(old);
+    delete eq.tail;
+    eq.tailFt = feet;
+    eq.tailIn = true;
+    return;
+  }
+  delete eq.tailIn;
   const into = incomingPath(loc.id);
   if (!into) {
     eq.tailFt = feet;
@@ -114,7 +138,7 @@ function equipmentLabel(eq) {
 
 // Short form for the chips on a location card.
 function equipmentChip(eq) {
-  const tail = tailFeet(eq) ? ` · ${tailFeet(eq)}ft tail` : "";
+  const tail = tailFeet(eq) ? ` · ${tailFeet(eq)}ft tail${eq.tailIn ? " inside" : ""}` : "";
   if (eq.type === "splitter") return `${eq.ratio}${tail}${eq.f2 ? ` · ${f2Label(eq)}` : ""}`;
   if (hasCards(eq)) return `${eq.name} · ${cardPorts(eq)}p${tail}`;
   if (eq.type === "closure") return `${eq.name} · ${eq.trays * eq.slots}sp`;
@@ -142,7 +166,7 @@ function openEquipment(locId, startKind) {
       const pic = el("span", "eq-icon");
       pic.append(iconEl((EQ_KINDS[eq.type] || EQ_KINDS.other).icon));
       const title = el("div", "eq-name", eq.name);
-      const sub = el("div", "eq-meta", [eq.model, eq.style, eq.type === "splitter" ? eq.ratio : "", tailFeet(eq) ? `${tailFeet(eq)} ft tail` : ""].filter(Boolean).join(" · "));
+      const sub = el("div", "eq-meta", [eq.model, eq.style, eq.type === "splitter" ? eq.ratio : "", tailText(eq, p)].filter(Boolean).join(" · "));
       const text = el("div", "eq-text");
       text.append(title, sub);
       row.append(pic, text);
@@ -217,7 +241,7 @@ function openEquipment(locId, startKind) {
         // time; "No tail" takes it off.
         const tail = tailLengthField(tailFeet(eq), "No tail");
         const into = incomingPath(p.id);
-        const from = tailStartField(into && into.from, tailCable(eq) && tailCable(eq).from, p.id);
+        const from = tailStartField(into && into.from, eq.tailIn ? p.id : tailCable(eq) && tailCable(eq).from, p.id, p.id);
         const save = () => {
           const ft = tail.value();
           if (ft === null) return;
@@ -227,6 +251,7 @@ function openEquipment(locId, startKind) {
             if (c) removeCableFrom(c);
             delete eq.tail;
             delete eq.tailFt;
+            delete eq.tailIn;
           }
           savePlan();
           renderRoute();
@@ -276,7 +301,9 @@ function openEquipment(locId, startKind) {
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x32");
     const tail = tailLengthField();
     const into = incomingPath(p.id);
-    const tailFrom = tailStartField(into && into.from, null, p.id);
+    // With a splice case here, a new tail is spliced to it by default.
+    const hasCase = (p.equipment || []).some((x) => x.type === "closure");
+    const tailFrom = tailStartField(into && into.from, hasCase ? p.id : null, p.id, p.id);
     const tailBox = el("div");
     tailBox.append(tail.el, tailFrom.el);
     const qty = inputEl("number", 1, { min: 1, max: 48 });
@@ -347,7 +374,7 @@ function openEquipment(locId, startKind) {
       addError.hidden = true;
       const k = kind.value;
       const t = tmpl();
-      tailBox.hidden = !(k === "splitter" ? t && t.tails : k === "terminal" && p.type === "pedestal");
+      tailBox.hidden = !(k === "splitter" ? t && t.tails : k === "terminal" && TERMINAL_TAIL_TYPES.includes(p.type));
       if (k === "splitter") fillRatios(ratio, t, t && t.ratios ? "1x8" : "1x32");
       picBox.replaceChildren(hardwarePicture(k, t));
       if (t && t.kind === k && !nameTouched && k !== "splitter") name.value = t.model || EQ_KINDS[k].label;
