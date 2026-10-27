@@ -18,6 +18,7 @@ function homeItem(h) {
 
 function buildSpliceModel() {
   const needsCache = new Map();
+  const needsBusy = new Set();
   const assignCache = new Map();
   const exitsCache = new Map();
 
@@ -42,6 +43,10 @@ function buildSpliceModel() {
   // Picked fibers and F2 counts are fixed; the rest go wherever is free.
   function needs(start) {
     if (needsCache.has(start.id)) return needsCache.get(start.id);
+    // Cables feeding each other in a loop (a tail run back to what feeds
+    // it): carry nothing more round the loop. Check plan names it.
+    if (needsBusy.has(start.id)) return { fixed: new Map(), items: [] };
+    needsBusy.add(start.id);
     const fixed = new Map();
     const items = [];
     const fix = (n, it) => {
@@ -70,6 +75,7 @@ function buildSpliceModel() {
       }
     }
     const result = { fixed, items };
+    needsBusy.delete(start.id);
     needsCache.set(start.id, result);
     return result;
   }

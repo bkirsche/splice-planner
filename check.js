@@ -13,6 +13,24 @@ function checkPlan() {
     warn(start.id, `${plan.unassigned.length} imported home(s) are still on the unassigned list.`);
   }
 
+  // Feeds that loop: following what feeds each location back up comes
+  // round to it again (e.g. a tail run back to the location feeding it).
+  const looped = new Set();
+  for (const p of plan.points) {
+    const seen = [];
+    for (let id = p.id; id && !looped.has(id); ) {
+      if (seen.includes(id)) {
+        const loop = seen.slice(seen.indexOf(id));
+        for (const x of loop) looped.add(x);
+        problem(id, `Cables feed each other in a loop: ${loop.map((x) => point(x).name).join(" → ")} → ${point(id).name}. One of them needs another feed.`);
+        break;
+      }
+      seen.push(id);
+      const c = incomingCable(id);
+      id = c && cableStart(c).from;
+    }
+  }
+
   // Each shared DS port is reported once, not once per home on it.
   const clashed = new Set();
   const tails = new Set(plan.points.flatMap((loc) => (loc.equipment || []).map((eq) => eq.tail)).filter(Boolean));

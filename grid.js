@@ -196,7 +196,7 @@ function drawGridLines() {
       const id = wires.length;
       const lane = offsetRoute(routes.get(k.id), c ? (i - (cables.length - 1) / 2) * 6 : 0);
       // A cable laid back up the route points back up it.
-      const pts = c && c.to !== k.path.to ? [...lane].reverse() : lane;
+      const pts = c && c.to !== k.path.to ? backRoute(lane) : lane;
       wires.push({ k, c, id, pts });
       wireRoutes.set(id, pts);
     }
@@ -620,6 +620,25 @@ function wirePath(pts, hops) {
     d += a.y === b.y ? ` H${R1(b.x)}` : ` V${R1(b.y)}`;
   }
   return d;
+}
+
+// A route turned around for a cable running back up its path. A route
+// starts on its first card's edge and stops a gap short of the last one,
+// where the arrow goes; turned around, it must do the same.
+function backRoute(pts) {
+  const out = [...pts].reverse().map((p) => ({ ...p }));
+  if (out.length < 2) return out;
+  const step = (a, b) => ({ x: Math.sign(b.x - a.x), y: Math.sign(b.y - a.y) });
+  // Out to the card it leaves...
+  const d0 = step(out[1], out[0]);
+  out.unshift({ x: out[0].x + d0.x * ROUTE_GAP, y: out[0].y + d0.y * ROUTE_GAP });
+  // ...and a gap short of the card it reaches.
+  const n = out.length - 1;
+  const d1 = step(out[n - 1], out[n]);
+  const end = { x: out[n].x - d1.x * ROUTE_GAP, y: out[n].y - d1.y * ROUTE_GAP };
+  if (end.x === out[n - 1].x && end.y === out[n - 1].y) out.pop();
+  else out[n] = end;
+  return simplify(out);
 }
 
 // The arrow on the last stretch, its tip on the card.
