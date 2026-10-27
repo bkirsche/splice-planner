@@ -194,10 +194,12 @@ function drawGridLines() {
     const cables = pathCables(k.path);
     for (const [i, c] of (cables.length ? cables : [null]).entries()) {
       const id = wires.length;
-      const lane = offsetRoute(routes.get(k.id), c ? (i - (cables.length - 1) / 2) * 6 : 0);
+      // Cables sharing a link run apart, so each line and its (slimmer)
+      // arrow stand clear of the next.
+      const lane = offsetRoute(routes.get(k.id), c ? (i - (cables.length - 1) / 2) * BUNDLE_GAP : 0);
       // A cable laid back up the route points back up it.
       const pts = c && c.to !== k.path.to ? backRoute(lane) : lane;
-      wires.push({ k, c, id, pts });
+      wires.push({ k, c, id, pts, slim: cables.length > 1 });
       wireRoutes.set(id, pts);
     }
   }
@@ -209,7 +211,8 @@ function drawGridLines() {
   svg.setAttribute("width", board.offsetWidth);
   svg.setAttribute("height", board.offsetHeight);
   const labels = [];
-  for (const { k, c, id, pts } of wires) {
+  const heads = [];
+  for (const { k, c, id, pts, slim } of wires) {
     const { path } = k;
     const color = wireColor(c);
     const cls = "grid-wire" + (c ? "" : " empty") + (c && phasePast(c) ? " past" : "") + (path.to === openPathId ? " selected" : "");
@@ -218,11 +221,14 @@ function drawGridLines() {
     line.setAttribute("class", cls);
     line.style.stroke = color;
     const head = document.createElementNS(SVG_NS, "path");
-    head.setAttribute("d", arrowHead(pts));
+    head.setAttribute("d", arrowHead(pts, slim ? 5 : 7));
     head.setAttribute("class", "grid-arrow" + (c ? "" : " empty"));
     head.style.fill = color;
-    svg.append(line, head);
+    svg.append(line);
+    heads.push(head);
   }
+  // Arrows over every line, so a neighbour never hides one.
+  svg.append(...heads);
   for (const k of links) {
     const { path, a, b } = k;
     const label = el("div", "grid-label" + (pathCables(path).length ? "" : " empty") + (path.to === openPathId ? " selected" : ""));
@@ -262,6 +268,7 @@ function offsetRoute(pts, offset) {
 
 const ROUTE_GAP = 9; // clear space kept around each card; the arrow fills it
 const ROUTE_LANE = 10; // lines side by side in a gap sit this far apart
+const BUNDLE_GAP = 12; // cables sharing one link sit this far apart
 const ROUTE_TURN = 160; // a turn costs as much as this much more line
 const ROUTE_CROSS = 40; // crossing another line
 const ROUTE_CLASH = 6000; // sharing a stretch or a corner: only if there's no other way
@@ -642,13 +649,12 @@ function backRoute(pts) {
 }
 
 // The arrow on the last stretch, its tip on the card.
-function arrowHead(pts) {
+function arrowHead(pts, w = 7) {
   const b = pts[pts.length - 1];
   const a = pts[pts.length - 2] || b;
   const dx = Math.sign(b.x - a.x);
   const dy = Math.sign(b.y - a.y);
   const tip = { x: b.x + dx * ROUTE_GAP, y: b.y + dy * ROUTE_GAP };
-  const w = 7;
   return dx
     ? `M${R1(b.x)},${R1(b.y - w)} L${R1(tip.x)},${R1(tip.y)} L${R1(b.x)},${R1(b.y + w)} Z`
     : `M${R1(b.x - w)},${R1(b.y)} L${R1(tip.x)},${R1(tip.y)} L${R1(b.x + w)},${R1(b.y)} Z`;
@@ -656,12 +662,15 @@ function arrowHead(pts) {
 
 // Each cable's name goes beside its own line, nearest the location it
 // feeds, on a spot clear of every card and every name placed before.
+// Where the gap is too small for that (cards stacked close), the name
+// folds to one row per cable, then moves further out beside the line.
 function placeLabels(items, cards) {
   const placed = [];
   const pad = 3;
-  const hits = (r) => cards.some((c) => r.l < c.r + pad && r.r > c.l - pad && r.t < c.b + pad && r.b > c.t - pad) ||
-    placed.some((c) => r.l < c.r + pad && r.r > c.l - pad && r.t < c.b + pad && r.b > c.t - pad);
-  for (const { label, pts, w, h } of items) {
+  const over = (r, c) => r.l < c.r + pad && r.r > c.l - pad && r.t < c.b + pad && r.b > c.t - pad;
+  const hits = (r) => cards.some((c) => over(r, c)) || placed.some((c) => over(r, c));
+  const rect = (p, w, h) => ({ l: p.cx - w / 2, r: p.cx + w / 2, t: p.cy - h / 2, b: p.cy + h / 2 });
+  const spots = (pts, w, h, far) => {
     const tries = [];
     // The stretches from the card it feeds backwards.
     for (let i = pts.length - 1, rank = 0; i >= 1; i--, rank++) {
@@ -672,21 +681,35 @@ function placeLabels(items, cards) {
       for (const t of [0.5, 0.3, 0.7, 0.15, 0.85]) {
         const x = a.x + (b.x - a.x) * t;
         const y = a.y + (b.y - a.y) * t;
-        const sides = horiz ? [[0, -(h / 2 + 5)], [0, h / 2 + 5]] : [[w / 2 + 7, 0], [-(w / 2 + 7), 0]];
-        for (const [ox, oy] of sides) {
-          const cx = x + ox;
-          const cy = y + oy;
+        // Clear of the widest bundle of lines on the link.
+        const sides = [];
+        for (const d of far ? [1, 2, 3, 4, 6, 8] : [0]) {
+          const m = 12 + d * 20;
+          sides.push(...(horiz ? [[0, -(h / 2 + m)], [0, h / 2 + m]] : [[w / 2 + m, 0], [-(w / 2 + m), 0]]).map((o) => [...o, d]));
+        }
+        for (const [ox, oy, d] of sides) {
           // A short stretch can't hold its name alongside.
           const fits = horiz ? len >= w * 0.6 : len >= h + 6;
-          tries.push({ cx, cy, score: rank * 40 + Math.abs(t - 0.5) * 30 + (fits ? 0 : 200) + (oy > 0 || ox < 0 ? 5 : 0) });
+          tries.push({ cx: x + ox, cy: y + oy, score: rank * 40 + d * 25 + Math.abs(t - 0.5) * 30 + (fits ? 0 : 200) + (oy > 0 || ox < 0 ? 5 : 0) });
         }
       }
     }
-    tries.sort((p, q) => p.score - q.score);
-    const rect = (p) => ({ l: p.cx - w / 2, r: p.cx + w / 2, t: p.cy - h / 2, b: p.cy + h / 2 });
-    const spot = tries.find((p) => !hits(rect(p))) || tries[0];
+    return tries.sort((p, q) => p.score - q.score);
+  };
+  for (const item of items) {
+    const { label, pts } = item;
+    let { w, h } = item;
+    let tries = spots(pts, w, h, false);
+    let spot = tries.find((p) => !hits(rect(p, w, h)));
+    if (!spot) {
+      label.classList.add("tight");
+      w = label.offsetWidth;
+      h = label.offsetHeight;
+      tries = spots(pts, w, h, false);
+      spot = tries.find((p) => !hits(rect(p, w, h))) || spots(pts, w, h, true).find((p) => !hits(rect(p, w, h))) || tries[0];
+    }
     if (!spot) continue;
-    placed.push(rect(spot));
+    placed.push(rect(spot, w, h));
     label.style.left = R1(spot.cx) + "px";
     label.style.top = R1(spot.cy) + "px";
   }

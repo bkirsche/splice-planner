@@ -1726,6 +1726,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .grid-label { transform: translate(-50%, -50%); }
 .grid-label .cable-name { font-size: 0.78rem; }
 .grid-label .cable-size { font-size: 0.68rem; }
+/* Folded to one row per cable where the gap is tight (grid.js placeLabels). */
+.grid-label.tight { max-width: none; white-space: nowrap; }
+.grid-label.tight .cable-rows { gap: 0; }
+.grid-label.tight .cable-row { display: flex; gap: 5px; justify-content: center; align-items: baseline; padding: 0; }
 .grid-label .cable-row:hover .cable-name, .grid-label.selected .cable-name { color: var(--accent-2); }
 .zoom-btn.fit .ic { width: 14px; height: 14px; vertical-align: -2px; }
 .zoom-btn.on { background: color-mix(in srgb, var(--accent) 25%, var(--card)); color: var(--text); }
