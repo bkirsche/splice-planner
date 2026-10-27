@@ -80,7 +80,52 @@ function registerPanel(panel, reset) {
     selectedId = null;
     renderRoute();
   }));
+  dragByTitle(panel);
   panels.push({ panel, reset });
+}
+
+// A dialog moves when you drag its title bar (the strip down to the
+// bottom of its title), so you can see the cards behind it. It stays on
+// screen, and opens centred again next time.
+function dragByTitle(panel) {
+  const title = () => panel.querySelector(":scope > h3");
+  const onBar = (e) => {
+    const h = title();
+    if (!h || e.button !== 0 || e.target.closest("button, input, select, textarea, a, label")) return false;
+    return e.clientY <= h.getBoundingClientRect().bottom;
+  };
+  let drag = null;
+  panel.addEventListener("pointermove", (e) => {
+    if (!drag) panel.classList.toggle("on-title", onBar(e));
+  });
+  panel.addEventListener("pointerleave", () => drag || panel.classList.remove("on-title"));
+  panel.addEventListener("pointerdown", (e) => {
+    if (!onBar(e)) return;
+    e.preventDefault();
+    const r = panel.getBoundingClientRect();
+    const [ox, oy] = (panel.style.translate || "0px 0px").split(" ").map((v) => parseFloat(v) || 0);
+    drag = { id: e.pointerId, x: e.clientX, y: e.clientY, ox, oy, r };
+    panel.setPointerCapture(e.pointerId);
+    panel.classList.add("dragging");
+  });
+  panel.addEventListener("pointermove", (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const { r } = drag;
+    const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+    const dx = clamp(e.clientX - drag.x, -r.left, innerWidth - r.right);
+    const dy = clamp(e.clientY - drag.y, -r.top, innerHeight - r.bottom);
+    panel.style.translate = `${drag.ox + dx}px ${drag.oy + dy}px`;
+  });
+  const end = (e) => {
+    if (!drag || e.pointerId !== drag.id) return;
+    drag = null;
+    panel.classList.remove("dragging");
+  };
+  panel.addEventListener("pointerup", end);
+  panel.addEventListener("pointercancel", end);
+  // Closed, or the window resized: back to the middle.
+  new MutationObserver(() => panel.hidden && (panel.style.translate = "")).observe(panel, { attributes: true, attributeFilter: ["hidden"] });
+  addEventListener("resize", () => (panel.style.translate = ""));
 }
 
 function closePanels() {

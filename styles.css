@@ -462,6 +462,10 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
 }
 .wizard.wide { width: min(1100px, calc(100vw - 24px)); }
+/* Dragged by the title bar (ui.js dragByTitle). */
+.wizard.on-title { cursor: grab; }
+.wizard.dragging { cursor: grabbing; user-select: none; }
+.wizard > h3 { touch-action: none; }
 .wizard h3 { margin: 0 0 16px; padding-right: 48px; font-size: 1.3rem; font-weight: 600; }
 .screen:has(.wizard:not([hidden]))::before, #app:has(> .wizard:not([hidden]))::before, #screen-splash:has(.other-form:not([hidden]))::before {
   content: "";
