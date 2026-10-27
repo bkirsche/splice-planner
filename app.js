@@ -287,9 +287,37 @@ function incomingPath(id) {
 // should end at a location: that one feeds it (its splices and
 // equipment); cables passing through aren't spliced there.
 
-// Every cable span on a path.
+// A span runs along its path, from where the path comes from to where it
+// goes, or (a tail laid back up the route) the other way. Paths form a
+// tree, so a span against its path is one ending where its path starts.
+function againstPath(c) {
+  const p = incomingPath(c.from);
+  return !!p && p.from === c.to;
+}
+
+// Every cable span on a path, either way along it.
 function pathCables(path) {
-  return plan.cables.filter((c) => c.to === path.to);
+  return plan.cables.filter((c) => c.to === path.to ? !againstPath(c) : c.from === path.to && c.to === path.from);
+}
+
+// The path a span lies on, known by where it goes.
+function spanPathTo(c) {
+  return againstPath(c) ? c.from : c.to;
+}
+
+// The locations on the way from a to b along the route, both included,
+// going up towards the start and back down as needed.
+function routeBetween(a, b) {
+  const up = (id) => {
+    const out = [];
+    for (let x = id; x && !out.includes(x); x = (incomingPath(x) || {}).from) out.push(x);
+    return out;
+  };
+  const ua = up(a);
+  const ub = up(b);
+  const meet = ua.find((x) => ub.includes(x));
+  if (!meet) return null;
+  return [...ua.slice(0, ua.indexOf(meet) + 1), ...ub.slice(0, ub.indexOf(meet)).reverse()];
 }
 
 // The cable span on a path that feeds where it goes (see incomingCable).
@@ -318,7 +346,8 @@ function incomingCable(id) {
   const arriving = [];
   const going = [];
   for (const c of plan.cables) {
-    if (c.to === id) arriving.push(c);
+    // A tail laid back up the route only passes through.
+    if (c.to === id && !(againstPath(c) && nextSpan(c))) arriving.push(c);
     else if (c.from === id && c.through) going.push(c);
   }
   if (arriving.length < 2) return arriving[0];
@@ -357,22 +386,18 @@ function cableSpans(c) {
   }
 }
 
-// Lay a cable down the route; later spans continue the first one.
+// Lay a cable from startId to toId, arriving over toId's own path: down
+// the route, or first back up it and down another branch (a tail can
+// start anywhere). Later spans continue the first one.
 function layRun(startId, toId, fields) {
   const into = incomingPath(toId);
   if (!into) return;
-  const chain = [];
-  const seen = new Set();
-  for (let p = into; p && !seen.has(p.id); p = incomingPath(p.from)) {
-    seen.add(p.id);
-    chain.unshift(p);
-    if (p.from === startId) break;
-  }
-  if (chain[0].from !== startId) chain.splice(0, chain.length - 1);
+  const route = routeBetween(startId, into.from);
+  const ids = route && !route.includes(toId) ? [...route, toId] : [into.from, toId];
   let first = null;
   let prev = null;
-  for (const p of chain) {
-    const span = { id: makeId(), from: p.from, to: p.to };
+  for (let i = 1; i < ids.length; i++) {
+    const span = { id: makeId(), from: ids[i - 1], to: ids[i] };
     if (prev) Object.assign(span, { name: fields.name, fibers: fields.fibers, through: "pass", prev: prev.id });
     else Object.assign(span, fields);
     plan.cables.push(span);

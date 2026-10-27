@@ -202,6 +202,7 @@ function openPath(toId, cableId) {
   const to = point(path.to);
   const cables = pathCables(path);
   const c = cableId === "new" ? null : cableId ? cables.find((x) => x.id === cableId) : pathCable(path);
+  if (c && againstPath(c)) return openBackRun(path, c);
   const arriving = plan.cables.filter((x) => x.to === from.id && (!nextSpan(x) || nextSpan(x) === c));
   let inCable = incomingCable(from.id);
   inCable = inCable && cableStart(inCable);
@@ -242,12 +243,12 @@ function openPath(toId, cableId) {
     if (c && c.through) {
       const start = cableStart(c);
       body.append(el("p", "hint", `Part of ${start.name}, from ${point(start.from).name}, passes through here`),
-        btnEl(`Edit ${start.name}`, () => openPath(start.to, start.id), "btn ghost"));
+        btnEl(`Edit ${start.name}`, () => openPath(spanPathTo(start), start.id), "btn ghost"));
     }
     body.append(fieldEl("On this path", mode));
 
     const newBox = el("div", "form-grid");
-    const starts = tailStartField(from.id);
+    const starts = tailStartField(from.id, null, to.id);
     starts.el.querySelector(".field-label").textContent = "Starts at";
     if (!c) newBox.append(starts.el);
     const startKind = c && !c.through ? c.kind || "cable" : "cable";
@@ -517,6 +518,51 @@ function openPath(toId, cableId) {
     }
   });
   openPathId = toId;
+  selectedId = null;
+  renderRoute();
+}
+
+// A cable laid back up the route (a tail starting further on): its name,
+// size and tail length. Where it starts is set again by removing it and
+// laying it anew, or from its splitter or terminal.
+function openBackRun(path, c) {
+  const spans = cableSpans(c);
+  const start = spans[0];
+  const end = spans.at(-1);
+  const kind = cableKind(start);
+  openForm(`${point(path.to).name} → ${point(path.from).name}`, (body, foot) => {
+    body.append(el("p", "hint", `${start.name} runs from ${point(start.from).name} back up the route` +
+      (spans.length > 1 ? `, through ${spans.slice(1).map((s) => point(s.from).name).join(", ")},` : "") + ` to ${point(end.to).name}.`));
+    const name = inputEl("text", start.name);
+    const sizes = CABLE_SIZES.includes(start.fibers) ? CABLE_SIZES : [...CABLE_SIZES, start.fibers].sort((a, b) => a - b);
+    const fibers = selectEl(sizes.map((n) => ({ value: String(n), label: `${n}F` })), String(start.fibers));
+    const tail = tailLengthField(start.tailFt, "Not set");
+    tail.el.hidden = kind === "cable";
+    const grid = el("div", "form-grid");
+    grid.append(fieldEl("Name", name), fieldEl("Size", fibers), tail.el);
+    body.append(el("p", "cable-annotation", CABLE_KINDS[kind]), grid);
+    foot.append(btnEl("Remove cable", () => {
+      const text = removeCableText(start);
+      finish();
+      withUndo(text, () => removeCableFrom(start));
+    }, "btn ghost danger"));
+    formButtons(foot, () => {
+      if (!name.value.trim()) return "Name the cable.";
+      const n = parseInt(fibers.value, 10);
+      const tailFt = kind === "cable" ? 0 : tail.value();
+      if (tailFt === null) return "Enter the custom tail length in feet.";
+      const stuck = f2Stuck(spans, n);
+      if (stuck) return stuck;
+      for (const s of spans) {
+        s.name = name.value.trim();
+        s.fibers = n;
+      }
+      if (tailFt) start.tailFt = tailFt;
+      else delete start.tailFt;
+      finish();
+    });
+  });
+  openPathId = path.to;
   selectedId = null;
   renderRoute();
 }

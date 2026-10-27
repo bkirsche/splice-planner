@@ -54,19 +54,25 @@ function tailFeet(eq) {
   return c ? c.tailFt || null : eq.tailFt || null;
 }
 
-// Where a tail fed from fromId can start: there, then on back up the route.
-function tailStarts(fromId) {
+// Where a tail into toId, fed from fromId, can start: there, then on back
+// up the route, then anywhere else nearest first (it runs back up the
+// route and down again). Never below toId: it arrives over toId's path.
+function tailStarts(fromId, toId) {
   const out = [];
   for (let id = fromId; id && !out.includes(id); id = (incomingPath(id) || {}).from) out.push(id);
-  return out;
+  const below = toId ? downstream(toId) : new Set();
+  const others = plan.points.filter((p) => p.type !== "nid" && !out.includes(p.id) && !below.has(p.id))
+    .map((p) => ({ id: p.id, n: (routeBetween(p.id, fromId) || []).length }))
+    .filter((x) => x.n).sort((a, b) => a.n - b.n);
+  return [...out, ...others.map((x) => x.id)];
 }
 
 // "Tail starts at": shown when there's more than one place to start.
 // Returns { el, value() } with the location id.
-function tailStartField(fromId, current) {
-  const ids = fromId ? tailStarts(fromId) : [];
+function tailStartField(fromId, current, toId) {
+  const ids = fromId ? tailStarts(fromId, toId) : [];
   const pick = selectEl(ids.map((id, i) => ({ value: id,
-    label: i ? `${point(id).name}, through ${ids.slice(0, i).reverse().map((x) => point(x).name).join(", ")}` : point(id).name })),
+    label: i ? `${point(id).name}, through ${routeBetween(id, fromId).slice(1).map((x) => point(x).name).join(", ")}` : point(id).name })),
     ids.includes(current) ? current : ids[0]);
   const box = fieldEl("Tail starts at", pick);
   box.hidden = ids.length < 2;
@@ -211,7 +217,7 @@ function openEquipment(locId, startKind) {
         // time; "No tail" takes it off.
         const tail = tailLengthField(tailFeet(eq), "No tail");
         const into = incomingPath(p.id);
-        const from = tailStartField(into && into.from, tailCable(eq) && tailCable(eq).from);
+        const from = tailStartField(into && into.from, tailCable(eq) && tailCable(eq).from, p.id);
         const save = () => {
           const ft = tail.value();
           if (ft === null) return;
@@ -270,7 +276,7 @@ function openEquipment(locId, startKind) {
     const ratio = selectEl(SPLITTER_RATIOS.map((r) => ({ value: r, label: r })), "1x32");
     const tail = tailLengthField();
     const into = incomingPath(p.id);
-    const tailFrom = tailStartField(into && into.from);
+    const tailFrom = tailStartField(into && into.from, null, p.id);
     const tailBox = el("div");
     tailBox.append(tail.el, tailFrom.el);
     const qty = inputEl("number", 1, { min: 1, max: 48 });

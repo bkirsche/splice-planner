@@ -29,8 +29,22 @@ function openMove(id) {
     }
     formButtons(foot, () => {
       if (target.value === path.from) return finish();
+      const cables = pathCables(path);
       path.from = target.value;
-      for (const x of pathCables(path)) {
+      for (const x of cables) {
+        if (x.to !== path.to) {
+          // A cable laid back up the route now leaves by the new spot;
+          // the rest of it, on from the old spot, is a cable of its own.
+          const next = nextSpan(x);
+          x.to = target.value;
+          if (next) {
+            delete next.through;
+            delete next.prev;
+            const name = nextCableName("cable", false);
+            for (const s of cableSpans(next)) s.name = name;
+          }
+          continue;
+        }
         x.from = target.value;
         delete x.picks;
         // A cable that passed through its old spot now starts at the new one.

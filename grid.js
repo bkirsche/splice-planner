@@ -194,7 +194,9 @@ function drawGridLines() {
     const cables = pathCables(k.path);
     for (const [i, c] of (cables.length ? cables : [null]).entries()) {
       const id = wires.length;
-      const pts = offsetRoute(routes.get(k.id), c ? (i - (cables.length - 1) / 2) * 6 : 0);
+      const lane = offsetRoute(routes.get(k.id), c ? (i - (cables.length - 1) / 2) * 6 : 0);
+      // A cable laid back up the route points back up it.
+      const pts = c && c.to !== k.path.to ? [...lane].reverse() : lane;
       wires.push({ k, c, id, pts });
       wireRoutes.set(id, pts);
     }
