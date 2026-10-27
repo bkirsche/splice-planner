@@ -506,6 +506,10 @@ function renderEmptyRoute() {
   card.append(el("span", "badge", "+"), el("span", "type", "Start"), el("span", "name", "Place the first location"),
     el("span", "lot", "A cabinet, handhole or anything else"));
   card.addEventListener("click", (e) => openStartMenu(e));
+  card.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    openStartMenu(e);
+  });
   tree.append(card);
   minimap.hidden = true;
   renderLayoutPick();
@@ -586,6 +590,11 @@ function cableRows(path) {
     if (c) row.append(el("span", "cable-size", `${c.fibers}F` + (c.jumper ? " jumper" : "") + (c.through ? " · continued" : "") + (!c.through && c.tailFt && c.kind ? ` · ${c.tailFt} ft` : "") + (hasPhases() ? ` · P${phaseIdx(c) + 1}` : "")));
     rows.append(row);
   }
+  // Right-click: the line's menu (edit, add a cable or tail, remove).
+  rows.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    openLineMenu(path.to, e);
+  });
   return rows;
 }
 
@@ -598,6 +607,11 @@ function routePathEl(path, model) {
     if (!child.matches(".cable-name, .cable-size")) wrap.append(child);
   }
   wrap.addEventListener("click", (e) => openLineMenu(path.to, e));
+  wrap.addEventListener("contextmenu", (e) => {
+    if (e.defaultPrevented) return;
+    e.preventDefault();
+    openLineMenu(path.to, e);
+  });
   return wrap;
 }
 
@@ -781,8 +795,11 @@ function stopEl(p) {
   if (pc) chips.prepend(pc);
   if (chips.childNodes.length) card.append(chips);
   card.addEventListener("click", (e) => openMenu(p.id, e));
+  // Right-click: this card's menu, or with several cards selected (and
+  // this one among them), what can be done to all of them.
   card.addEventListener("contextmenu", (e) => {
     e.preventDefault();
+    if (typeof gridPicked !== "undefined" && gridPicked.size > 1 && gridPicked.has(p.id) && !isGuest()) return openPickedMenu(e);
     openMenu(p.id, e);
   });
   return card;
@@ -797,6 +814,15 @@ function plusEl(p) {
 
 // --- Popup menus ---
 
+// The app's one popup menu: a location's menu on a tap, and the
+// right-click menu everywhere. Items are { icon, label, run, danger };
+// `sep: true` draws a line above an item. It sits over dialogs too,
+// works from the keyboard (arrows, Home/End, Enter, Esc) and stays on
+// screen.
+document.body.append(menu);
+menu.setAttribute("role", "menu");
+let menuBack = null; // what had focus before the menu opened
+
 function openPopup(title, items, e, caption) {
   menu.innerHTML = "";
   const head = el("div", "menu-head");
@@ -805,31 +831,85 @@ function openPopup(title, items, e, caption) {
   titles.append(el("div", "menu-title", title));
   head.append(titles, xButton(() => {
     closeMenu();
-    selectedId = null;
+    if (formPanel.hidden) selectedId = null;
     renderRoute();
   }));
   menu.append(head);
+  menu.setAttribute("aria-label", title);
   for (const item of items) {
+    if (item.sep) menu.append(el("div", "menu-sep"));
     const b = btnEl("", (ev) => {
       ev.stopPropagation();
       closeMenu();
       item.run();
     });
     b.className = "mi" + (item.danger ? " danger" : "");
+    b.setAttribute("role", "menuitem");
     b.append(iconEl(item.icon || "info"), document.createTextNode(item.label));
     menu.append(b);
   }
+  if (menu.hidden) menuBack = document.activeElement;
   menu.hidden = false;
-  // Place the menu at the tap, kept inside the window.
-  const x = Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8);
-  const y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8);
+  // At the tap or click, kept inside the window. From the keyboard (the
+  // menu key, or Shift+F10) there is no spot: under what has focus.
+  let { clientX: cx = 0, clientY: cy = 0 } = e || {};
+  if (!cx && !cy && e && e.target && e.target.getBoundingClientRect) {
+    const r = e.target.getBoundingClientRect();
+    cx = r.left + 12;
+    cy = r.bottom - 4;
+  }
+  const x = Math.min(cx, window.innerWidth - menu.offsetWidth - 8);
+  const y = Math.min(cy, window.innerHeight - menu.offsetHeight - 8);
   menu.style.left = Math.max(8, x) + "px";
   menu.style.top = Math.max(8, y) + "px";
+  const first = menu.querySelector(".mi");
+  if (first) first.focus({ preventScroll: true });
 }
 
 function closeMenu() {
+  if (menu.hidden) return;
   menu.hidden = true;
+  if (menuBack && menuBack.isConnected && menuBack !== document.body) menuBack.focus({ preventScroll: true });
+  menuBack = null;
 }
+
+// Arrows move between the items; Esc closes just the menu (not the
+// dialog under it); Tab leaves it.
+menu.addEventListener("keydown", (e) => {
+  const items = [...menu.querySelectorAll(".mi")];
+  const i = items.indexOf(document.activeElement);
+  const go = (n) => {
+    e.preventDefault();
+    items[(n + items.length) % items.length].focus();
+  };
+  if (e.key === "ArrowDown") go(i + 1);
+  else if (e.key === "ArrowUp") go(i < 0 ? items.length - 1 : i - 1);
+  else if (e.key === "Home") go(0);
+  else if (e.key === "End") go(items.length - 1);
+  else if (e.key === "Tab") closeMenu();
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || menu.hidden) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  closeMenu();
+}, true);
+addEventListener("resize", () => closeMenu());
+
+// Right-click anywhere opens the app's own menu, never the browser's.
+// Boxes you type in keep the browser's menu, for copy and paste. Where
+// nothing more specific is on offer, the menu offers to copy the text
+// you selected, if any.
+document.addEventListener("contextmenu", (e) => {
+  if (e.defaultPrevented) return;
+  if (typingIn(e.target)) return;
+  e.preventDefault();
+  const text = String(window.getSelection() || "").trim();
+  if (!text) return closeMenu();
+  openPopup(text.length > 40 ? text.slice(0, 40) + "…" : text, [
+    { icon: "copy", label: "Copy", run: () => navigator.clipboard && navigator.clipboard.writeText(text) },
+  ], e, "Selected text");
+});
 
 // The menu on a location: everything but adding the next location,
 // which is on its + button. What's offered depends on the type.
@@ -884,8 +964,19 @@ function openMenu(id, e) {
     items.push({ icon: LOC_META[p.type] ? LOC_META[p.type].icon : "pin", label: "Change location type", run: () => changeTypeForm(id) });
   }
   if (hasPhases()) items.push({ icon: "info", label: `Phase (${phaseName(phaseIdx(p))})`, run: () => openPhaseForm(id) });
+  // What the + buttons do, and picking it along with others.
+  if (p.type !== "nid") {
+    items.push({ icon: "plus", label: "Add the next location…", sep: true, run: () => {
+      if (typeof gridAdd !== "undefined") gridAdd = null;
+      openAddMenu(id, e);
+    } });
+  }
+  if (!isStart && layoutNow() === "grid") {
+    const on = gridPicked.has(id);
+    items.push({ icon: "select", label: on ? "Take out of the selection" : "Select (add to the selection)", sep: p.type === "nid", run: () => togglePick(id) });
+  }
   if (!isStart) {
-    items.push({ icon: "move", label: "Move (feed from somewhere else)", run: () => openMove(id) });
+    items.push({ icon: "move", label: "Move (feed from somewhere else)", sep: true, run: () => openMove(id) });
     items.push({ icon: "remove", label: "Remove", danger: true, run: () => removeStop(id) });
   }
   openPopup(p.name, items, e, typeLabel(p.type) + by);

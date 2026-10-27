@@ -423,6 +423,7 @@ function openConnections(locId) {
   const anchor = { key: null }; // the last one selected, for Shift ranges
   let now = null; // this render's connections, for selecting
   let hidden = null; // side -> key -> tube header, for rows folded away
+  let menus = null; // row or header -> its right-click menu
   const title = isCabinet(L) ? `Connections at ${L.name}` : closureAt(L) ? `Splice case at ${L.name}` : `Splices at ${L.name}`;
   openForm(title, (body, foot) => {
     const info = el("div", "cx-info");
@@ -448,6 +449,13 @@ function openConnections(locId) {
         });
     }
 
+    function fillGapsNow() {
+      const n = fillGaps(locId);
+      render();
+      renderRoute();
+      flash(n ? `Spliced ${n} fiber${n === 1 ? "" : "s"}.` : "Nothing left to fill.");
+    }
+
     function render() {
       const model = buildSpliceModel();
       const conns = connectionsAt(model, locId);
@@ -455,6 +463,7 @@ function openConnections(locId) {
       const byTarget = new Map(conns.map((c) => [c.to, c]));
       now = { bySource, byTarget };
       hidden = { L: new Map(), R: new Map() };
+      menus = new WeakMap();
       for (const k of [...sel]) if (!byTarget.has(k)) sel.delete(k);
       const connOf = (side, key) => (side === "L" ? bySource : byTarget).get(key);
       const allSel = (list) => list.length > 0 && list.every((c) => sel.has(c.to));
@@ -513,12 +522,7 @@ function openConnections(locId) {
         levels.append(b);
       }
       tools.append(levels);
-      tools.append(btnEl("Fill gaps from free fibers", () => {
-        const n = fillGaps(locId);
-        render();
-        renderRoute();
-        flash(n ? `Spliced ${n} fiber${n === 1 ? "" : "s"}.` : "Nothing left to fill.");
-      }, "btn ghost"), btnEl("Reset to automatic", () => {
+      tools.append(btnEl("Fill gaps from free fibers", fillGapsNow, "btn ghost"), btnEl("Reset to automatic", () => {
         withUndo("Back to the app's own choices for the cables leaving here. Patches and F2 counts stayed.", () => resetConnections(locId));
         render();
       }, "btn ghost"));
@@ -628,6 +632,21 @@ function openConnections(locId) {
             acts.append(rm);
           }
           head.append(acts);
+          const foldCable = { icon: open ? "fold" : "unfold", label: open ? "Fold this cable up" : "Open this cable", run: () => {
+            folds.cables.set(cableKey, !open);
+            render();
+          } };
+          menus.set(head, () => ({ title: g.title, caption: "Cable", conns: groupConns, items: [
+            ...groupItems(groupConns, `on ${g.title}`, "on this cable"),
+            { ...foldCable, sep: groupConns.length > 0 },
+            ...(open && tubes.size > 1 ? [{ icon: "fold", label: "Fold every tube", run: () => {
+              for (const t of tubes.keys()) folds.tubes.set(tubeKey(t), true);
+              render();
+            } }, { icon: "unfold", label: "Open every tube", run: () => {
+              for (const t of tubes.keys()) folds.tubes.set(tubeKey(t), false);
+              render();
+            } }] : []),
+          ] }));
 
           // A folded cable is just its header; lines to it end there.
           if (!open) {
@@ -664,11 +683,24 @@ function openConnections(locId) {
                 folds.tubes.set(tubeKey(t), !folded);
                 render();
               }, (e) => selectGroup(list, e));
+              const tubeMenu = () => [
+                ...groupItems(list, `in tube ${t} of ${g.title}`, "in this tube"),
+                { icon: folded ? "unfold" : "fold", label: folded ? "Open this tube" : "Fold this tube up", sep: list.length > 0, run: () => {
+                  folds.tubes.set(tubeKey(t), !folded);
+                  render();
+                } },
+              ];
+              menus.set(th, () => ({ title: `Tube ${t} · ${item.tube.name}`, caption: g.title, conns: list, items: tubeMenu() }));
               box.append(th);
               // Lines to a folded tube end at its header.
               if (folded) for (const x of items) hidden[side].set(x.key, sw);
             }
-            if (!folded) box.append(endRow(item, side));
+            if (folded) continue;
+            const row = endRow(item, side);
+            // The tube header just above it, for the tube's items.
+            const tubeAt = item.tube ? [...box.querySelectorAll(".cx-tube")].pop() : null;
+            menus.set(row, () => fiberMenu(item, side, tubeAt && menus.get(tubeAt)));
+            box.append(row);
           }
           col.append(box);
         }
@@ -811,6 +843,83 @@ function openConnections(locId) {
       picked = null;
       render();
     }
+
+    // --- Right-click menus ---
+    // On a fiber, a tube or a cable: connect, remove, select, fold. With
+    // several connections selected (and the click on one of them), the
+    // menu is about all of them.
+    const plural = (n) => `${n} connection${n === 1 ? "" : "s"}`;
+    function groupItems(list, where, inWhat) {
+      if (!list.length) return [];
+      return [
+        { icon: "select", label: `Select the ${plural(list.length)} ${inWhat}`, run: () => {
+          for (const c of list) sel.add(c.to);
+          picked = null;
+          render();
+        } },
+        { icon: "remove", label: `Remove the ${plural(list.length)} ${inWhat}`, danger: true, run: () => removeConns(list, where) },
+      ];
+    }
+
+    function fiberMenu(item, side, tubeMenu) {
+      const conn = connAt(side, item.key);
+      const other = picked && picked.side !== side ? picked : null;
+      const items = [];
+      if (other && !item.key.endsWith(":auto") && !other.key.endsWith(":auto")) {
+        items.push({ icon: "xconnect", label: `Connect to ${endpointLabel(other.key)}`, run: () => {
+          picked = null;
+          join(other, { key: item.key, side });
+        } });
+      } else if (!item.key.endsWith(":auto")) {
+        items.push({ icon: "xconnect", label: conn ? "Connect it somewhere else…" : "Connect from here…", run: () => {
+          picked = { key: item.key, side };
+          sel.clear();
+          render();
+          flash("Now click the fiber to connect it to.");
+        } });
+      }
+      if (conn) items.push({ icon: "remove", label: "Remove this connection", danger: true, run: () => removeConns([conn]) });
+      const tube = tubeMenu && tubeMenu();
+      if (tube) items.push(...tube.items.map((x, i) => (i ? x : { ...x, sep: true })));
+      return { title: endpointLabel(item.key), caption: tube ? tube.title : side === "L" ? "Coming in" : "Going out", items, conns: conn ? [conn] : [] };
+    }
+
+    wrap.addEventListener("contextmenu", (e) => {
+      if (typingIn(e.target)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const target = e.target.closest(".cx-end, .cx-tube, .cx-head");
+      const make = target && menus.get(target);
+      let m = make ? make() : null;
+      const list = m ? m.conns : [];
+      // Right-click on one of several selected: act on all of them.
+      if (sel.size > 1 && list.length && list.every((c) => sel.has(c.to))) {
+        const all = shown.filter((c) => sel.has(c.to));
+        return openPopup(`${plural(all.length)} selected`, [
+          { icon: "remove", label: `Remove the ${plural(all.length)}`, danger: true, run: () => removeConns(all, "you selected") },
+          { icon: "select", label: "Clear the selection", run: () => clearSel() },
+        ], e, "Selection");
+      }
+      // A right-click on something else selects it instead, as usual.
+      if (target && target.classList.contains("cx-end") && list.length && !sel.has(list[0].to)) {
+        sel.clear();
+        sel.add(list[0].to);
+        render();
+        m = menus.get(wrap.querySelector(`.cx-${target.dataset.side === "L" ? "left" : "right"} [data-key="${CSS.escape(target.dataset.key)}"]`))();
+      }
+      if (!m) {
+        m = { title: L.name, caption: "Splice case", items: [
+          ...(shown.length ? [{ icon: "select", label: `Select all ${plural(shown.length)}`, run: () => {
+            for (const c of shown) sel.add(c.to);
+            render();
+          } }] : []),
+          ...(sel.size ? [{ icon: "select", label: "Clear the selection", run: () => clearSel() }] : []),
+          { icon: "xconnect", label: "Fill gaps from free fibers", run: fillGapsNow },
+          ...(shown.length ? [{ icon: "remove", label: `Remove all ${plural(shown.length)}`, danger: true, sep: true, run: () => removeConns(shown, `at ${L.name}`) }] : []),
+        ] };
+      }
+      openPopup(m.title, m.items, e, m.caption);
+    });
 
     function clearSel() {
       if (!sel.size && !picked) return false;

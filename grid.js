@@ -150,6 +150,10 @@ function gridBoard() {
           if (cap) cap.textContent = `Add a location ${DIRS[dir].label} ${p.name}`;
         }, `add-dir add-${dir}`);
         b.title = `Add a location ${DIRS[dir].label} ${p.name}`;
+        b.addEventListener("contextmenu", (e) => {
+          e.preventDefault();
+          b.click();
+        });
         b.setAttribute("aria-label", b.title);
         card.append(b);
       }
@@ -905,6 +909,42 @@ function clearPicks() {
   renderPicks();
   return true;
 }
+
+// Right-click on a selected card: what can be done to all of them.
+function openPickedMenu(e) {
+  const picked = pickedLocs();
+  const homes = pickedHomes();
+  const allHomes = homes.length === picked.length;
+  const what = allHomes ? plural(homes.length, "home") : plural(picked.length, "location");
+  openPopup(`${what} selected`, [
+    { icon: "move", label: "Move them together", run: () => {
+      if (!gridUnlocked) {
+        gridUnlocked = true;
+        renderRoute();
+      }
+      showNote("Drag any selected location: the others move with it. Tap Lock when you're done.");
+    } },
+    ...(allHomes ? [{ icon: "homes", label: "Feed them from…", run: () => openFeedPicked() }] : []),
+    { icon: "select", label: "Clear the selection", run: () => clearPicks() },
+    { icon: "remove", label: `Remove ${what}`, danger: true, sep: true, run: () => removePicked() },
+  ], e, "Selection");
+}
+
+// Right-click on empty canvas: fit, select every location, or clear.
+routeView.addEventListener("contextmenu", (e) => {
+  if (e.defaultPrevented || layoutNow() !== "grid" || !plan || planEmpty() || typingIn(e.target)) return;
+  if (e.target.closest(".zoom-bar, .minimap, .pick-bar")) return;
+  e.preventDefault();
+  const items = [{ icon: "pin", label: "Fit the whole route", run: () => fitAll() }];
+  if (!isGuest()) {
+    items.push({ icon: "select", label: "Select every location", run: () => {
+      for (const p of plan.points.slice(1)) gridPicked.add(p.id);
+      renderPicks();
+    } });
+  }
+  if (gridPicked.size) items.push({ icon: "select", label: "Clear the selection", run: () => clearPicks() });
+  openPopup("Route", items, e);
+});
 
 // Shift / Ctrl / Cmd-click adds a card to the selection or drops it,
 // instead of opening its menu. A plain click opens just that card's

@@ -677,11 +677,17 @@ function openLineMenu(toId, e) {
   if (isGuest()) return openPath(toId);
   e.stopPropagation();
   const path = incomingPath(toId);
+  const cables = pathCables(path);
   openPopup(`${point(path.from).name} → ${point(path.to).name}`, [
-    ...pathCables(path).map((c) => ({ icon: "edit", label: `Cable ${c.name}`, run: () => openPath(toId, c.id) })),
-    { icon: "add", label: "Add a cable", run: () => openPath(toId, "new") },
+    ...cables.map((c) => ({ icon: "edit", label: `Edit cable ${c.name}`, run: () => openPath(toId, c.id) })),
+    { icon: "plus", label: "Add a cable or tail", run: () => openPath(toId, "new") },
     { icon: "handhole", label: "Insert a pass-through handhole", run: () => insertStopForm(path) },
-  ], e);
+    ...cables.map((c, i) => ({ icon: "remove", label: `Remove cable ${c.name}`, danger: true, sep: i === 0, run: () => {
+      const text = removeCableText(c);
+      finish();
+      withUndo(text, () => removeCableFrom(c));
+    } })),
+  ], e, "Line");
 }
 
 // --- Add a stop on a path: A -> C becomes A -> B -> C ---
