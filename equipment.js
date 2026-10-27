@@ -94,12 +94,13 @@ function tailFeet(eq) {
 }
 
 // Where a tail into toId, fed from fromId, can start: there, then on back
-// up the route, then anywhere else nearest first (it runs back up the
-// route and down again). Never below toId: it arrives over toId's path.
-function tailStarts(fromId, toId) {
+// up the route, then anywhere else nearest first: across another branch,
+// or below toId, running back up to it. With overPath, only places from
+// which it arrives over toId's own path (not from below).
+function tailStarts(fromId, toId, overPath) {
   const out = [];
   for (let id = fromId; id && !out.includes(id); id = (incomingPath(id) || {}).from) out.push(id);
-  const below = toId ? downstream(toId) : new Set();
+  const below = toId && overPath ? downstream(toId) : new Set([toId]);
   const others = plan.points.filter((p) => p.type !== "nid" && !out.includes(p.id) && !below.has(p.id))
     .map((p) => ({ id: p.id, n: (routeBetween(p.id, fromId) || []).length }))
     .filter((x) => x.n).sort((a, b) => a.n - b.n);
@@ -110,10 +111,15 @@ function tailStarts(fromId, toId) {
 // With inside (the location's id, or "here" for one not made yet) it
 // also offers a tail spliced right there, never leaving the location.
 // Returns { el, value() } with the location id.
-function tailStartField(fromId, current, toId, inside) {
-  const ids = fromId ? tailStarts(fromId, toId) : [];
-  const opts = ids.map((id, i) => ({ value: id,
-    label: i ? `${point(id).name}, through ${routeBetween(id, fromId).slice(1).map((x) => point(x).name).join(", ")}` : point(id).name }));
+function tailStartField(fromId, current, toId, inside, overPath) {
+  const ids = fromId ? tailStarts(fromId, toId, overPath) : [];
+  // Each choice says the way it runs: "E09610, up to E09611" or "B, through C".
+  const via = (id) => {
+    const r = toId && point(toId) ? routeBetween(id, toId) : [id, ...routeBetween(id, fromId).slice(1)];
+    const mid = r ? r.slice(1, -1).map((x) => point(x).name) : [];
+    return mid.length ? `, through ${mid.join(", ")}` : toId && point(toId) && r && r.length === 2 && r[1] === toId && id !== fromId ? `, back to ${point(toId).name}` : "";
+  };
+  const opts = ids.map((id) => ({ value: id, label: point(id).name + via(id) }));
   if (inside) opts.unshift({ value: inside, label: `Inside ${point(inside) ? point(inside).name : "this location"} (spliced right here)` });
   const pick = selectEl(opts, opts.some((o) => o.value === current) ? current : (ids[0] || inside));
   const box = fieldEl("Tail starts at", pick);

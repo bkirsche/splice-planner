@@ -386,14 +386,14 @@ function cableSpans(c) {
   }
 }
 
-// Lay a cable from startId to toId, arriving over toId's own path: down
-// the route, or first back up it and down another branch (a tail can
-// start anywhere). Later spans continue the first one.
+// Lay a cable from startId to toId along the route: down it, back up it,
+// or up and down another branch (a tail can start anywhere, even below
+// where it ends). Later spans continue the first one.
 function layRun(startId, toId, fields) {
   const into = incomingPath(toId);
-  if (!into) return;
-  const route = routeBetween(startId, into.from);
-  const ids = route && !route.includes(toId) ? [...route, toId] : [into.from, toId];
+  const route = routeBetween(startId, toId);
+  const ids = route && route.length > 1 ? route : into ? [into.from, toId] : null;
+  if (!ids) return;
   let first = null;
   let prev = null;
   for (let i = 1; i < ids.length; i++) {

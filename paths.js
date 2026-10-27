@@ -248,8 +248,15 @@ function openPath(toId, cableId) {
     body.append(fieldEl("On this path", mode));
 
     const newBox = el("div", "form-grid");
-    const starts = tailStartField(from.id, null, to.id);
+    // A new cable here arrives at the end of this path, or (a tail run
+    // back up it) starts at the end and arrives at its start.
+    const starts = tailStartField(from.id, null, to.id, null, true);
     starts.el.querySelector(".field-label").textContent = "Starts at";
+    if (!toHome) {
+      starts.el.querySelector("select").append(new Option(`${to.name}, back to ${from.name}`, to.id));
+      starts.el.hidden = false;
+    }
+    const goingBack = () => !c && starts.value() === to.id;
     if (!c) newBox.append(starts.el);
     const startKind = c && !c.through ? c.kind || "cable" : "cable";
     const kind = selectEl(Object.entries(CABLE_KINDS).map(([value, label]) => ({ value, label })), startKind);
@@ -260,7 +267,8 @@ function openPath(toId, cableId) {
     // Otherwise it's named after where it ends (cable A09613 ends in A09613).
     const endId = own ? cableSpans(own).at(-1).to : to.id;
     const defaultName = () => (ownerLoc && (own.kind || "cable") === kind.value ? ownerLoc.name
-      : own && (own.kind || "cable") === kind.value && AUTO_CABLE_NAME.test(own.name) ? own.name : cableNameFor(kind.value, endId));
+      : own && (own.kind || "cable") === kind.value && AUTO_CABLE_NAME.test(own.name) ? own.name
+        : cableNameFor(kind.value, goingBack() ? from.id : endId));
     const name = inputEl("text", own ? own.name : defaultName());
     let nameManual = !!own && !AUTO_CABLE_NAME.test(own.name) && !(ownerLoc && own.name === ownerLoc.name) &&
       own.name !== cableNameFor(own.kind || "cable", endId);
@@ -404,6 +412,7 @@ function openPath(toId, cableId) {
     }
     starts.el.addEventListener("change", () => {
       if (c) return;
+      renderName();
       const incoming = incomingCable(starts.value());
       inCable = incoming && cableStart(incoming);
       ranges = null;
@@ -496,13 +505,14 @@ function openPath(toId, cableId) {
       }
       // A span that passed through now starts a cable of its own here.
       const spans = c ? (c.through ? cableRunFrom(c) : cableSpans(c)) : [];
-      const stuck = f2Stuck(c ? spans : [{ to: to.id }], n);
+      const stuck = f2Stuck(c ? spans : [{ to: goingBack() ? from.id : to.id }], n);
       if (stuck) return stuck;
       if (c) {
         delete c.through;
         delete c.prev;
       }
-      const span = c || layRun(starts.value(), to.id, { name: cableName, fibers: n });
+      const span = c || (goingBack() ? layRun(to.id, from.id, { name: cableName, fibers: n })
+        : layRun(starts.value(), to.id, { name: cableName, fibers: n }));
       if (!c) spans.push(...cableSpans(span));
       for (const s of spans) {
         s.name = cableName;
