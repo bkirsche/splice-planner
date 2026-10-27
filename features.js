@@ -274,7 +274,8 @@ function feApply(t, col, items, value) {
       return;
     }
   }
-  const changing = items.filter((r) => String(col.get(r) ?? "") !== String(value ?? ""));
+  // Rows where the field can't be set (a tail on a bare splitter) are skipped.
+  const changing = items.filter((r) => (!col.editable || col.editable(r)) && String(col.get(r) ?? "") !== String(value ?? ""));
   if (!changing.length) return;
   const what = changing.length === 1 ? `${col.label} of ${feText(feCols(t)[0], changing[0])}` : `${col.label} on ${changing.length} ${t.label.toLowerCase()}`;
   withUndo(`Changed ${what}.`, () => {
