@@ -311,6 +311,7 @@ function openPath(toId, cableId) {
     if (jumperOk || (c && c.jumper)) sizeOpts.splice(1, 0, { value: "1j", label: "1F Jumper" });
     const fibers = selectEl(sizeOpts,
       c && !c.through ? (c.jumper ? "1j" : c.fibers) : toHome ? 1 : 12);
+    fibers.dataset.field = "size";
     // A tail's length: stock, or custom when no stock tail reaches.
     const tail = tailLengthField(own && own.tailFt, "Not set");
     const syncTail = () => (tail.el.hidden = kind.value === "cable");
@@ -326,6 +327,7 @@ function openPath(toId, cableId) {
 
     // Fiber picker: which incoming fibers go onto this cable.
     const pickBox = el("div", "pick-box");
+    pickBox.dataset.field = "picks";
     body.append(pickBox);
     // Locked: the app picks the fibers. Unlocked: ranges and the grid.
     // A cable starting here for the first time starts unlocked with

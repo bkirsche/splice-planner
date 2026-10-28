@@ -169,6 +169,7 @@ function openPhaseForm(id) {
   const p = point(id);
   openForm(`Phase for ${p.name}`, (body, foot) => {
     const sel = phaseSelect(p);
+    sel.dataset.field = "phase";
     body.append(fieldEl("Phase", sel, "Only this location moves. Its cables and equipment keep their own phase."));
     formButtons(foot, () => {
       p.phase = sel.value;

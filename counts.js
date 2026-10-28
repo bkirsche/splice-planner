@@ -484,11 +484,11 @@ function countDevices(p) {
 // Homes on the left, the ports of a splitter or terminal on the right:
 // drag a home onto a port (or tap the home, then the port). Selected homes
 // can also be filled in order or put back to automatic.
-function openHomeCounts(locId) {
+function openHomeCounts(locId, eqId) {
   const L = point(locId);
   const ticked = new Set(); // the selected homes
   const tickAt = { key: null }; // the last one selected, for Shift ranges
-  let deviceId = null;
+  let deviceId = eqId || null;
   let picked = null; // a home waiting for a port
   openForm(`Home counts at ${L.name}`, (body, foot) => {
     const homes = () => homesForCounts(L);

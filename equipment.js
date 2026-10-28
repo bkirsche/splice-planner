@@ -200,6 +200,7 @@ function openEquipment(locId, startKind) {
 
     function eqRow(eq) {
       const row = el("div", "eq-row");
+      row.dataset.eq = eq.id;
       const pic = el("span", "eq-icon");
       pic.append(iconEl((EQ_KINDS[eq.type] || EQ_KINDS.other).icon));
       const title = el("div", "eq-name", eq.name);
@@ -236,7 +237,20 @@ function openEquipment(locId, startKind) {
           renderList();
         });
         const view = el("span", "auto-val mono", eq.f2 ? f2Label(eq) : "no free fiber");
+        // The size: how many homes (DS ports) it can feed.
+        const ratios = SPLITTER_RATIOS.includes(eq.ratio) ? SPLITTER_RATIOS : [...SPLITTER_RATIOS, eq.ratio];
+        const size = selectEl(ratios.map((r) => ({ value: r, label: `${r} (${splitterPorts({ ratio: r })} ports)` })), eq.ratio);
+        size.dataset.field = "ratio";
+        size.addEventListener("change", () => {
+          eq.ratio = size.value;
+          savePlan();
+          renderRoute();
+          renderList();
+        });
+        const sizeRow = el("label", "inline-field");
+        sizeRow.append(el("span", "", "Size"), size);
         const f2Row = el("span", "inline-field");
+        f2Row.dataset.field = "f2";
         f2Row.append(el("span", "", "F2"), lockField(!eq.f2Manual, view, sel, (lock) => {
           eq.f2Manual = !lock;
           // Locked back to automatic: the app splices it from now on.
@@ -246,7 +260,7 @@ function openEquipment(locId, startKind) {
           renderList();
         }, "the F2 count"));
         const note = el("span", "field-hint", eq.f2 ? f2Hint(p, eq) : "F2 not set");
-        row.append(f2Row, el("span", "eq-meta mono", `DS ${usedPorts(eq).size}/${splitterPorts(eq)}`), note);
+        row.append(sizeRow, f2Row, el("span", "eq-meta mono", `DS ${usedPorts(eq).size}/${splitterPorts(eq)}`), note);
       }
       if (eq.type === "closure") {
         const trays = inputEl("number", eq.trays, { min: 1, max: 48 });
@@ -266,6 +280,7 @@ function openEquipment(locId, startKind) {
         };
         trays.addEventListener("change", save);
         slots.addEventListener("change", save);
+        trays.dataset.field = "trays";
         const a = el("label", "inline-field");
         a.append(el("span", "", "Trays"), trays);
         const b = el("label", "inline-field");
