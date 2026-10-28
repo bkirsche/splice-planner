@@ -232,7 +232,8 @@ function openPath(toId, cableId) {
   const cables = pathCables(path);
   const c = cableId === "new" ? null : cableId ? cables.find((x) => x.id === cableId) : pathCable(path);
   if (c && againstPath(c)) return openBackRun(path, c);
-  const arriving = plan.cables.filter((x) => x.to === from.id && (!nextSpan(x) || nextSpan(x) === c));
+  // A tail laid back up this path ends here too, but can't carry on down it.
+  const arriving = plan.cables.filter((x) => x.to === from.id && x.from !== to.id && (!nextSpan(x) || nextSpan(x) === c));
   let inCable = incomingCable(from.id);
   inCable = inCable && cableStart(inCable);
   const toHome = to.type === "nid";
@@ -252,17 +253,7 @@ function openPath(toId, cableId) {
 
     // Cable
     body.append(el("h4", "form-section", "Cable"));
-    if (cables.length >= 2) {
-      const choices = el("div", "form-grid");
-      for (const x of cables) {
-        const button = btnEl(`${x.name} · ${x.fibers}F`, () => openPath(toId, x.id), "btn ghost" + (x === c ? " selected" : ""));
-        button.setAttribute("aria-pressed", String(x === c));
-        if (x === c) button.classList.remove("ghost");
-        choices.append(button);
-      }
-      choices.append(btnEl("+ Another cable", () => openPath(toId, "new"), "btn ghost"));
-      body.append(choices);
-    }
+    if (cables.length) body.append(cableChoices(toId, cables, c));
     const modes = [{ value: "none", label: "No cable" }, { value: "new", label: "New cable" }];
     for (const x of arriving) {
       modes.push({ value: `pass:${x.id}`, label: `${x.name} passes through ${from.name}` },
@@ -570,6 +561,20 @@ function openPath(toId, cableId) {
   renderRoute();
 }
 
+// The cables on a path, one button each, and one to lay another beside
+// them (a cable along a path a tail already uses, say).
+function cableChoices(toId, cables, current) {
+  const choices = el("div", "form-grid");
+  const pick = (label, run, on) => {
+    const button = btnEl(label, run, on ? "btn selected" : "btn ghost");
+    button.setAttribute("aria-pressed", String(on));
+    choices.append(button);
+  };
+  for (const x of cables) pick(`${x.name} · ${x.fibers}F`, () => openPath(toId, x.id), x === current);
+  pick("+ Another cable", () => openPath(toId, "new"), !current);
+  return choices;
+}
+
 // A cable laid back up the route (a tail starting further on): its name,
 // size and tail length. Where it starts is set again by removing it and
 // laying it anew, or from its splitter or terminal.
@@ -588,6 +593,8 @@ function openBackRun(path, c) {
     tail.el.hidden = kind === "cable";
     const grid = el("div", "form-grid");
     grid.append(fieldEl("Name", name), fieldEl("Size", fibers), tail.el);
+    // Another cable can still be laid along this path, beside the tail.
+    body.append(cableChoices(path.to, pathCables(path), c));
     body.append(el("p", "cable-annotation", CABLE_KINDS[kind]), grid);
     foot.append(btnEl("Remove cable", () => {
       const text = removeCableText(start);
