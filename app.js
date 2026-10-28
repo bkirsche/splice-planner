@@ -99,6 +99,8 @@ function show(name) {
   if (name === "splash") renderResume();
   if (name === "route") {
     if (typeof syncAutosave === "function") syncAutosave();
+    // A big plan opens on its area map (areas.js).
+    areaOpenPlan();
     renderRoute();
     // A fresh view: the whole route if it fits readably, else the start.
     requestAnimationFrame(() => startView());
@@ -480,14 +482,17 @@ function renderRoute() {
     // Keep the card being worked on where it was on screen.
     const anchor = rememberAnchor();
     tree.innerHTML = "";
-    // The Grid layout (grid.js) places each location in a cell of its own.
-    tree.append(layoutNow() === "grid" ? gridBoard() : branchEl(plan.points[0]));
+    // The Grid layout (grid.js) places each location in a cell of its own;
+    // a big plan can show one splice area at a time (areas.js).
+    tree.append(areaOn() ? areaEl() : layoutNow() === "grid" ? gridBoard() : branchEl(plan.points[0]));
+    if (areaOn()) areaAfterDraw();
     restoreAnchor(anchor);
     drawFans();
     scheduleMinimap();
   }
   renderLayoutPick();
   renderGridButtons();
+  renderAreaBar();
   updateUnassignedButton();
   renderHeader();
   if (typeof refreshFeatures === "function") refreshFeatures();
@@ -514,6 +519,7 @@ function renderEmptyRoute() {
   minimap.hidden = true;
   renderLayoutPick();
   renderGridButtons();
+  renderAreaBar();
   updateUnassignedButton();
   renderHeader();
   if (typeof refreshFeatures === "function") refreshFeatures();
@@ -540,6 +546,8 @@ function placeStart(type, name, extra) {
 }
 
 function branchEl(p) {
+  // On an area page the next closure is a link to its own page.
+  if (areaCut(p)) return areaExitEl(p);
   const branch = el("div", "branch");
   const wrap = el("div", "stop-wrap");
   wrap.append(stopEl(p));
@@ -579,8 +587,20 @@ function branchEl(p) {
 // Each cable opens its own form; guests keep the read-only line menu.
 function cableRows(path) {
   const rows = el("div", "cable-rows");
-  const cables = pathCables(path);
-  for (const c of cables.length ? cables : [null]) {
+  const all = pathCables(path);
+  // In an area, several tails share one row (it opens the line's menu).
+  const { list: cables, tails } = areaOn() ? areaRows(all) : { list: all, tails: [] };
+  if (tails.length) {
+    const row = btnEl("", (e) => {
+      e.stopPropagation();
+      openLineMenu(path.to, e);
+    }, "cable-row");
+    row.title = tails.map((c) => c.name).join(", ");
+    const sizes = [...new Set(tails.map((c) => c.fibers))];
+    row.append(el("span", "cable-name", plural(tails.length, "tail")), el("span", "cable-size", sizes.length === 1 ? `${sizes[0]}F each` : "tap for each"));
+    rows.append(row);
+  }
+  for (const c of cables.length || tails.length ? cables : [null]) {
     const row = btnEl("", (e) => {
       e.stopPropagation();
       if (!c || isGuest()) openLineMenu(path.to, e);
@@ -606,6 +626,7 @@ function routePathEl(path, model) {
   for (const child of [...old.children]) {
     if (!child.matches(".cable-name, .cable-size")) wrap.append(child);
   }
+  if (areaOn()) areaLine(path, wrap);
   wrap.addEventListener("click", (e) => openLineMenu(path.to, e));
   wrap.addEventListener("contextmenu", (e) => {
     if (e.defaultPrevented) return;
@@ -719,12 +740,13 @@ function drawWires(root, z = 1) {
     for (const child of kids.children) {
       const cable = child.querySelector(":scope > .cable");
       const fan = child.querySelector(":scope > .fan");
-      let x1, y1, color, cls = "wire";
+      let x1, y1, color, width, cls = "wire";
       if (cable) {
         const r = cable.querySelector(".line").getBoundingClientRect();
         x1 = X(r.right);
         y1 = Y(r.top + r.height / 2);
         color = cable.style.getPropertyValue("--wire") || WIRE_COLORS.cable;
+        width = cable.dataset.w;
         for (const c of ["empty", "drop", "past"]) if (cable.classList.contains(c)) cls += " " + c;
       } else if (fan) {
         const r = fan.getBoundingClientRect();
@@ -733,7 +755,7 @@ function drawWires(root, z = 1) {
         color = fan.dataset.wire;
         if (fan.dataset.empty) cls += " empty";
       } else continue;
-      wires.push({ x1, y1, color, cls });
+      wires.push({ x1, y1, color, width, cls });
     }
     // Farthest first, so the nearest path's color is on top where they share the trunk.
     wires.sort((a, b) => Math.abs(b.y1 - y0) - Math.abs(a.y1 - y0));
@@ -743,6 +765,7 @@ function drawWires(root, z = 1) {
       line.setAttribute("d", d);
       line.setAttribute("class", w.cls);
       line.style.stroke = w.color;
+      if (w.width) line.style.strokeWidth = w.width;
       svg.append(line);
     }
   }

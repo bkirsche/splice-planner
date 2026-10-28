@@ -90,9 +90,10 @@
         <span class="chip view-only guest-only">View only</span>
         <div class="route-search" role="search">
           <label for="route-search" class="sr-only">Find on the route</label>
-          <input type="search" id="route-search" placeholder="Find a lot, terminal or cable" autocomplete="off" spellcheck="false">
+          <input type="search" id="route-search" placeholder="Find a lot, street, location or cable  ( / )" autocomplete="off" spellcheck="false">
           <div id="search-results" class="search-results" role="listbox" aria-label="Search results" hidden></div>
         </div>
+        <button class="btn ghost" id="area-map" type="button" title="One box per splice closure: open an area to work on it" hidden><svg class="ic"><use href="#i-closure"/></svg> Area map</button>
         <label class="layout-label" title="How the route is shown on this device"><span>Layout</span><select id="layout-pick" class="layout-pick"></select></label>
         <div class="header-actions">
           <button class="btn ghost edit-only" id="import-homes"><svg class="ic"><use href="#i-homes"/></svg> Import homes</button>
@@ -108,6 +109,8 @@
       </header>
       <p class="hint route-hint">Tap a location for its options, <b>+</b> to add the next location, or a line for its cable and conduit. Drag the background (or hold the middle mouse button) to move around; scroll to zoom.</p>
 
+      <!-- On the area map or an area page: where you are (areas.js) -->
+      <div id="area-bar" class="area-bar" hidden></div>
       <!-- The route on a canvas you drag and zoom (pan.js) -->
       <div id="route-view" class="route-view">
         <div id="route-tree" class="route-tree"></div>
@@ -265,6 +268,7 @@
   <script src="table.js"></script>
   <script src="grid.js"></script>
   <script src="phases.js"></script>
+  <script src="areas.js"></script>
   <script src="paths.js"></script>
   <script src="equipment.js"></script>
   <script src="import.js"></script>
