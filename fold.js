@@ -42,6 +42,8 @@ function homeCount() {
 
 // The layout on screen: Auto resolved to Full or Compact.
 function layoutNow() {
+  // An area page (areas.js) is drawn folded, whatever the layout.
+  if (typeof areaOn === "function" && areaOn()) return "compact";
   if (fold.layout !== "auto") return fold.layout;
   return homeCount() > AUTO_COMPACT_HOMES ? "compact" : "full";
 }
@@ -136,7 +138,9 @@ function foldTray(p, drops, tucked, hasKids) {
       el("span", "n", String(homes)));
     tray.append(b);
   }
-  if (drops.length) {
+  // In an area, folded homes are listed by street.
+  if (drops.length && areaOn() && !homesShown(p.id)) tray.append(areaHomesEl(p, drops));
+  else if (drops.length) {
     const open = homesShown(p.id);
     const b = btnEl(open ? "Hide homes" : `${plural(drops.length, "home")} ▸`, (e) => {
       e.stopPropagation();
@@ -200,11 +204,12 @@ function renderLayoutPick() {
     { value: "grid", label: "Grid: build any direction (advanced)" },
   ]).childNodes);
   layoutPick.value = fold.layout;
-  foldAllBtn.hidden = layoutNow() !== "compact";
+  foldAllBtn.hidden = layoutNow() !== "compact" || areaOn();
 }
 
 layoutPick.addEventListener("change", () => {
   fold.layout = layoutPick.value;
+  areaView.on = false;
   saveFold();
   selectedId = null;
   renderRoute();
@@ -255,6 +260,10 @@ function searchEntries() {
   for (const c of plan.cables) {
     if (c.through || isDrop(c) || !phaseShown(point(c.to))) continue;
     out.push({ id: c.to, words: [c.name], text: c.name, sub: `${c.fibers}F ${CABLE_KINDS[cableKind(c)].toLowerCase()} to ${point(c.to).name}`, icon: "slack" });
+  }
+  // Streets (areas.js): every card that feeds one lights up.
+  for (const [street, homes] of allStreets()) {
+    out.push({ street, words: [street], text: street, sub: `Street · ${plural(homes.length, "home")}`, icon: "homes" });
   }
   return out;
 }
@@ -311,8 +320,19 @@ function pickSearch(i) {
   if (!hit) return;
   searchList.hidden = true;
   searchBox.blur();
-  revealPoint(hit.id);
+  if (hit.street) showStreet(hit.street);
+  else if (areaOn()) areaReveal(hit.id);
+  else revealPoint(hit.id);
 }
+
+// "/" goes to the find box from anywhere on the route.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || screens.route.hidden || typingIn(e.target)) return;
+  if (!menu.hidden || document.querySelector(".wizard:not([hidden]), dialog[open]")) return;
+  e.preventDefault();
+  searchBox.focus();
+  searchBox.select();
+});
 
 searchBox.addEventListener("input", () => {
   searchHits = runSearch(searchBox.value);

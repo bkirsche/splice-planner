@@ -91,7 +91,8 @@ function fitAll() {
 function startView() {
   sizeView();
   fitAll();
-  if (view.z >= 0.6) return;
+  // The area map and area pages are made to fit the screen.
+  if (view.z >= 0.6 || areaOn()) return;
   const start = tree.querySelector(".stop.start");
   const pos = start && treePos(start);
   view.z = 0.8;

@@ -1951,3 +1951,86 @@ select.fe-cell { cursor: pointer; min-width: 150px; }
 input[type=number].fe-cell { min-width: 90px; text-align: right; }
 .fe-show-c { width: 1%; }
 @media (max-width: 700px) { .fe-head h3 { width: 100%; } }
+
+/* --- Splice areas (Daily note 21, areas.js) --- */
+
+/* Where you are, over the canvas. */
+.area-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 2px 10px; }
+.area-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 1.05rem; }
+.area-crumbs b { font-weight: 700; }
+.area-crumbs .sep { color: var(--muted); }
+.crumb-link { font: inherit; color: var(--accent-2); background: none; border: 0; padding: 2px 4px; border-radius: 6px; cursor: pointer; }
+.crumb-link:hover { text-decoration: underline; background: var(--card-2); }
+.area-note { flex: 1 1 260px; color: var(--muted); font-size: 0.9rem; }
+.area-legend { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.8rem; }
+.area-legend i { display: inline-block; width: 22px; border-top: 5px solid #e5484d; border-radius: 2px; margin-left: 6px; }
+.area-legend i.tl { border-top: 2.5px solid #3e8ef7; }
+
+/* The map: one box per closure. */
+.area-map { position: relative; }
+.area-wires { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.area-wires .wire { stroke-linecap: round; }
+.area-tile {
+  position: absolute;
+  width: 236px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 12px 14px 12px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-left: 6px solid var(--c);
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  cursor: pointer;
+}
+.area-tile:hover, .area-tile:focus-visible { border-color: var(--accent); border-left-color: var(--c); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent); }
+.area-tile .k { font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.area-tile .hm { display: flex; align-items: baseline; gap: 6px; }
+.area-tile .nm { font-size: 1.35rem; font-weight: 700; line-height: 1.15; margin-right: auto; overflow-wrap: anywhere; }
+.area-tile .hm b { font-family: var(--mono); font-size: 1.6rem; line-height: 1; color: #f0b27a; }
+.area-tile .hm .u { color: var(--muted); font-size: 0.85rem; }
+.area-tile .st { display: flex; flex-direction: column; margin-top: 4px; font-size: 0.9rem; line-height: 1.35; }
+.area-tile .srow .n, .area-tile .srow.more { color: var(--muted); }
+.area-tile .lc { margin-top: 4px; font-size: 0.82rem; color: var(--muted); }
+
+/* An area page: links to the area before and the closures after. */
+.area-stub {
+  width: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  background: color-mix(in srgb, var(--card) 70%, var(--bg));
+  border: 1.5px dashed var(--border-2);
+  border-radius: 10px;
+  cursor: pointer;
+}
+.area-stub:hover, .area-stub:focus-visible { border-color: var(--accent); }
+.area-stub .k { font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.area-stub .nm { font-size: 1.1rem; font-weight: 700; }
+.area-stub .note { font-size: 0.8rem; color: var(--muted); }
+.area-stub .go { margin-top: 3px; font-size: 0.85rem; font-weight: 600; color: var(--accent-2); }
+
+/* Homes folded into the card that feeds them, by street. */
+.area-homes { display: flex; flex-direction: column; align-items: stretch; gap: 2px; width: 100%; }
+.area-homes .tray-btn { align-self: flex-start; margin-bottom: 2px; }
+.area-street { font: inherit; font-size: 0.78rem; line-height: 1.3; color: var(--text); text-align: left; background: none; border: 1px solid transparent; border-radius: 4px; padding: 2px 4px; cursor: pointer; }
+.area-street:hover { border-color: var(--accent); }
+
+/* Picked in the find box. */
+.flash { animation: area-flash 1.1s ease-in-out 3; }
+@keyframes area-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 178, 122, 0); }
+  50% { box-shadow: 0 0 0 7px rgba(240, 178, 122, 0.75); }
+}
+.area-street.hit, .area-tile.hit { border-color: #f0b27a; }
+@media (prefers-reduced-motion: reduce) { .flash { animation: none; outline: 3px solid #f0b27a; } }
