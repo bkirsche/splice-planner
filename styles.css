@@ -477,7 +477,7 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 .wizard.dragging { cursor: grabbing; user-select: none; }
 .wizard > h3 { touch-action: none; }
 .wizard h3 { margin: 0 0 16px; padding-right: 48px; font-size: 1.3rem; font-weight: 600; }
-.screen:has(.wizard:not([hidden]))::before, #app:has(> .wizard:not([hidden]))::before, #screen-splash:has(.other-form:not([hidden]))::before {
+.screen:has(.wizard:not([hidden]):not(.check-wizard))::before, #app:has(> .wizard:not([hidden]))::before, #screen-splash:has(.other-form:not([hidden]))::before {
   content: "";
   position: fixed;
   inset: 0;
@@ -604,19 +604,19 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 
 /* --- Troubleshooter --- */
 
-.check-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
-.check-list button {
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  padding: 11px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  border: 1px solid;
-  color: var(--text);
-}
-.check-list .problem button { background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
-.check-list .warning button { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+/* Sits at the side, not dimming the route, so Show me can be seen. */
+.wizard.check-wizard { left: auto; top: auto; right: 16px; bottom: 16px; transform: none; width: min(560px, calc(100vw - 32px)); }
+.check-card { padding: 14px 16px; border-radius: 8px; border: 1px solid; }
+.check-card.problem { background: var(--danger-bg); border-color: color-mix(in srgb, var(--danger) 50%, transparent); }
+.check-card.warning { background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+.check-tag { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.check-text { margin: 6px 0 0; font-size: 1.05rem; line-height: 1.45; }
+.check-fix, .check-help { margin: 10px 0 0; line-height: 1.45; }
+.check-fix { font-weight: 600; }
+.check-help { color: var(--muted); }
+.check-actions { margin-top: 12px; }
+.check-nav { border-top: 1px solid var(--border-2); padding-top: 12px; }
+.check-pos { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 /* --- Equipment --- */
 
@@ -1495,7 +1495,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .zoom-bar, .minimap { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); }
 
 /* Dialogs and menus */
-.screen:has(.wizard:not([hidden]))::before, #app:has(> .wizard:not([hidden]))::before, #screen-splash:has(.other-form:not([hidden]))::before { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.screen:has(.wizard:not([hidden]):not(.check-wizard))::before, #app:has(> .wizard:not([hidden]))::before, #screen-splash:has(.other-form:not([hidden]))::before { backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .wizard {
   border-top: 3px solid var(--brand);
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
@@ -1505,6 +1505,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   from { opacity: 0; transform: translate(-50%, -48%) scale(0.98); }
   to { opacity: 1; transform: translate(-50%, -50%); }
 }
+.wizard.check-wizard { animation: pop-side 0.18s ease-out both; }
+@keyframes pop-side { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 .context-menu { animation: fade 0.12s ease-out both; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55); }
 @keyframes fade { from { opacity: 0; transform: translateY(-3px); } to { opacity: 1; transform: none; } }
 .undo-bar { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); background: color-mix(in srgb, var(--card-3) 92%, transparent); }

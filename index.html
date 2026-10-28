@@ -228,12 +228,14 @@
       </div>
 
       <!-- Troubleshooter results -->
-      <div id="check-panel" class="wizard wide" hidden>
+      <div id="check-panel" class="wizard check-wizard" hidden>
         <h3 id="check-title"></h3>
-        <p class="hint">Tap one to find it on the route.</p>
-        <ul id="check-list" class="check-list"></ul>
-        <div class="row">
-          <button type="button" class="btn big" id="check-close">Close</button>
+        <div id="check-step"></div>
+        <div class="row check-nav">
+          <button type="button" class="btn ghost" id="check-back">Back</button>
+          <span id="check-pos" class="check-pos"></span>
+          <button type="button" class="btn ghost push-left" id="check-next">Next</button>
+          <button type="button" class="btn" id="check-close">Close</button>
         </div>
       </div>
 
