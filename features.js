@@ -21,6 +21,7 @@ function addFeatureType(t) {
 }
 
 const fe = { open: false, type: null, sort: null, filter: "", picked: new Set() };
+let feFocusNext = null; // the cell to land in after the next redraw (Enter)
 const feAnchor = { key: null }; // the last row selected, for Shift ranges
 const fePanel = el("aside", "feature-panel");
 fePanel.setAttribute("aria-label", "Feature editor");
@@ -95,7 +96,8 @@ function feRows(t) {
 function renderFeatures() {
   if (!fe.open || !plan) return;
   // Keep the cell being worked in, and the scroll, across the redraw.
-  const active = document.activeElement && fePanel.contains(document.activeElement) ? document.activeElement.dataset.cell : null;
+  const active = feFocusNext || (document.activeElement && fePanel.contains(document.activeElement) ? document.activeElement.dataset.cell : null);
+  feFocusNext = null;
   const oldWrap = fePanel.querySelector(".fe-table-wrap");
   const scroll = oldWrap ? [oldWrap.scrollTop, oldWrap.scrollLeft] : [0, 0];
   const t = feType();
@@ -246,6 +248,14 @@ function renderFeatures() {
             e.stopPropagation();
             ed.value = c.get(r) ?? "";
             ed.blur();
+          } else if (e.key === "Enter" && !e.isComposing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            // Save it and go down (Shift: up) to the same column.
+            e.preventDefault();
+            const next = cellBelow(ed, e.shiftKey);
+            if (String(c.get(r) ?? "") !== String(editorValue(c, ed) ?? "")) {
+              feFocusNext = (next || ed).dataset.cell;
+              feApply(t, c, [r], editorValue(c, ed));
+            } else focusCell(next);
           }
         });
         td.append(ed);
@@ -265,14 +275,17 @@ function renderFeatures() {
   });
   table.append(thead, tbody);
   wrap.append(table);
-  fePanel.replaceChildren(head, bulk, wrap);
+  const keys = el("p", "fe-keys", "Enter: save and go down · Shift+Enter: go up · Tab: next box · Esc: put back what was there · Ctrl+Z: undo the last change");
+  fePanel.replaceChildren(head, bulk, keys, wrap);
   wrap.scrollTop = scroll[0];
   wrap.scrollLeft = scroll[1];
   if (active) {
     const again = fePanel.querySelector(`[data-cell="${CSS.escape(active)}"]`);
     if (again) {
-      again.focus();
-      if (active === "filter") again.setSelectionRange(again.value.length, again.value.length);
+      if (active === "filter") {
+        again.focus();
+        again.setSelectionRange(again.value.length, again.value.length);
+      } else focusCell(again);
     }
   }
 }
