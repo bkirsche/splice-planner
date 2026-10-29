@@ -106,7 +106,7 @@ function tableSplitterF2(L, s) {
     else tableTickedSplitters.delete(s.id);
     renderTable();
   });
-  const sel = selectEl([{ value: "", label: "No F2" }, ...(s.f2 ? [{ value: s.f2, label: f2Text(s.f2) }] : [])], s.f2 || "");
+  const sel = selectEl([{ value: "", label: "No F2" }, ...(s.f2 ? [{ value: s.f2, label: f2Label(s) }] : [])], s.f2 || "");
   sel.className = "rt-select mono";
   sel.title = "F2 fiber";
   sel.setAttribute("aria-label", `F2 for ${eqLabel(s)}`);
@@ -114,18 +114,14 @@ function tableSplitterF2(L, s) {
   const fillOptions = () => {
     if (filled) return;
     filled = true;
-    const c = feederAt(L.id, s);
     const opts = [{ value: "", label: "No F2" }];
-    for (let n = 1; n <= (c ? c.fibers : 432); n++) {
-      const used = n !== s.f2 && f2Problem(L, s, n);
-      opts.push({ value: n, label: f2Text(n) + (used ? " (in use)" : ""), disabled: !!used });
-    }
+    for (const ch of f2Choices(L, s)) opts.push({ value: ch.n, label: ch.label + (ch.problem ? " (in use)" : ""), disabled: !!ch.problem });
     sel.replaceChildren(...selectEl(opts).childNodes);
     sel.value = String(s.f2 || "");
   };
   sel.addEventListener("pointerdown", fillOptions);
   sel.addEventListener("focus", fillOptions);
-  sel.addEventListener("change", () => withUndo(`${eqLabel(s)} at ${L.name} is now ${sel.value ? f2Text(Number(sel.value)) : "without an F2"}, set by hand.`, () => {
+  sel.addEventListener("change", () => withUndo(`${eqLabel(s)} at ${L.name} is now ${sel.value ? sel.selectedOptions[0].textContent : "without an F2"}, set by hand.`, () => {
     s.f2 = sel.value ? Number(sel.value) : null;
     s.f2Manual = true;
   }));
@@ -155,15 +151,20 @@ function tableSplitterTools() {
     for (const { s } of ticked) s.f2 = null;
     let n = start;
     const out = [];
+    // Counts are from the start of the project: each takes the next
+    // free fiber whose count is n or more.
     for (const { s, loc } of ticked) {
-      const got = nextFreeF2(loc, s, n);
-      if (got === null) {
+      const choices = f2Choices(loc, s);
+      const got = choices.find((ch) => ch.start !== null && ch.start >= n && !ch.problem);
+      if (!got) {
         plan = migratePlan(JSON.parse(before));
-        return (msg.textContent = `No free feeder fiber from F2 ${n} for ${eqLabel(s)} at ${loc.name}. Start lower or tick fewer splitters.`);
+        return (msg.textContent = choices.some((ch) => ch.start !== null)
+          ? `No free fiber from ${f2Text(n)} for ${eqLabel(s)} at ${loc.name}. Start lower or tick fewer splitters.`
+          : `${eqLabel(s)} at ${loc.name} isn't spliced back to the start yet, so it has no F2 counts to number. Untick it, or splice its feeder through.`);
       }
-      s.f2 = got;
-      out.push([s, got]);
-      n = got + 1;
+      s.f2 = got.n;
+      out.push([s, got.start]);
+      n = got.start + 1;
     }
     for (const [s] of out) s.f2Manual = true;
     savePlan();

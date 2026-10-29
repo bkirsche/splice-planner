@@ -89,20 +89,17 @@ function homeF2(home) {
   return s && s.f2 ? s : null;
 }
 
-// The fiber that really feeds a splitter: { cable, n, traced }. A
-// terminal at its own spot is fed by a terminal tail spliced in the
-// location before it, so its F2 is the fiber the tail is spliced to
-// there (F09610 #3), not the tail's own fiber 1. Tails are followed back
-// through their fiber picks, or the app's own picks when there are none.
-function f2Source(eq) {
-  if (!eq.f2) return null;
-  const loc = equipmentLocation(eq.id);
-  const arriving = loc && feederAt(loc.id, eq);
-  if (!arriving) return null;
-  let cable = cableStart(arriving);
-  let n = eq.f2;
+// The F2 count is the fiber's number at the start of the project: a
+// splitter on fiber 5 in a handhole reads F2 101 when that fiber is
+// spliced back to #101 of the cable leaving the start. traceFiber
+// follows fiber n of a cable back through every splice (tails, picks,
+// or the app's own picks): { cable, n, traced, start }. `start` is true
+// when it got all the way to a cable leaving the start of the project.
+function traceFiber(from, n) {
+  const first = cableStart(from);
+  let cable = first;
   const seen = new Set();
-  while (cableKind(cable) !== "cable" && !seen.has(cable.id)) {
+  while (!seen.has(cable.id)) {
     seen.add(cable.id);
     const up = incomingCable(cable.from);
     if (!up) break;
@@ -112,30 +109,69 @@ function f2Source(eq) {
     cable = cableStart(up);
     n = pair.in;
   }
-  return { cable, n, traced: seen.size > 0 && cable !== cableStart(arriving) };
+  return { cable, n, traced: cable !== first, start: !!plan.points[0] && cable.from === plan.points[0].id };
 }
 
-// A splitter's F2 as it reads on cards and sheets: "F2 61", or
-// "F2 F09610 #3" for a terminal fed by a tail.
+// The fiber that really feeds a splitter, traced back to the start.
+function f2Source(eq) {
+  if (!eq.f2) return null;
+  const loc = equipmentLocation(eq.id);
+  const arriving = loc && feederAt(loc.id, eq);
+  return arriving ? traceFiber(arriving, eq.f2) : null;
+}
+
+// How a traced fiber reads: "F2 101" from the start of the project, or
+// the cable it stops on ("F2 Cable 4 #5") until it's spliced through.
+function f2Read(src, n, prefix = true) {
+  if (!src || src.start) return prefix ? f2Text(src ? src.n : n) : f2Cell(src ? src.n : n);
+  return `${prefix ? countScheme().f2Prefix : ""}${src.cable.name} #${padNum(src.n, countScheme().pad)}`;
+}
+
+// A splitter's F2 as it reads on cards and sheets: "F2 101".
 function f2Label(eq) {
-  if (!eq.f2) return "F2 not set";
-  const src = f2Source(eq);
-  return src && src.traced ? `${countScheme().f2Prefix}${src.cable.name} #${padNum(src.n, countScheme().pad)}` : f2Text(eq.f2);
+  return eq.f2 ? f2Read(f2Source(eq), eq.f2) : "F2 not set";
 }
 
 // The same, under an "F2" table heading.
 function f2CellFor(eq) {
-  if (!eq.f2) return "";
-  const src = f2Source(eq);
-  return src && src.traced ? `${src.cable.name} #${padNum(src.n, countScheme().pad)}` : f2Cell(eq.f2);
+  return eq.f2 ? f2Read(f2Source(eq), eq.f2, false) : "";
 }
 
-// The F2 fiber's tube and color, when the location has a cable arriving.
+// Every fiber a splitter at `loc` could take, with its count from the
+// start of the project: [{ n (fiber on the feeder here), start (count,
+// or null if not spliced back), label, problem }], counted ones first.
+function f2Choices(loc, eq) {
+  const c = feederAt(loc.id, eq);
+  const out = [];
+  for (let n = 1; n <= (c ? c.fibers : 432); n++) {
+    const src = c ? traceFiber(c, n) : null;
+    out.push({ n, start: !src ? n : src.start ? src.n : null, label: f2Read(src, n), problem: n === eq.f2 ? "" : f2Problem(loc, eq, n) });
+  }
+  return out.sort((a, b) => (a.start === null) - (b.start === null) || (a.start ?? a.n) - (b.start ?? b.n));
+}
+
+// The F2 fiber's tube and color where it's spliced: on the cable
+// arriving at the location, or for a terminal tail the cable the tail
+// is spliced to.
 function f2Colors(eq) {
-  const src = f2Source(eq);
-  if (!src || src.n > src.cable.fibers) return "";
-  const f = colorCode(src.cable.fibers)[src.n - 1];
-  return `${f.tubeColor.name} tube, ${f.fiberColor.name} fiber, on ${src.cable.name}`;
+  const loc = equipmentLocation(eq.id);
+  const arriving = loc && feederAt(loc.id, eq);
+  if (!arriving || !eq.f2) return "";
+  let cable = cableStart(arriving);
+  let n = eq.f2;
+  const seen = new Set();
+  while (cableKind(cable) !== "cable" && !seen.has(cable.id)) {
+    seen.add(cable.id);
+    const up = incomingCable(cable.from);
+    const pairs = !up ? [] : cable.picks ? expandPicks(cable.picks) : (routeModel || buildSpliceModel()).autoPairs(cable);
+    const pair = pairs.find((x) => x.out === n);
+    if (!pair) break;
+    cable = cableStart(up);
+    n = pair.in;
+  }
+  if (n > cable.fibers) return "";
+  const f = colorCode(cable.fibers)[n - 1];
+  return `${f.tubeColor.name} tube, ${f.fiberColor.name} fiber, on ${cable.name}`;
 }
 
 // Ports on a splitter already taken: port -> home.

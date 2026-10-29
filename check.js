@@ -239,6 +239,10 @@ function checkPlan() {
       } else if (arriving && f2Problem(p, s, s.f2)) {
         problem(p.id, `${S}: ${f2Problem(p, s, s.f2)}`, "f2-taken",
           { ...sp, go: eqGo(p, s, "f2", `${S}: ${f2Problem(p, s, s.f2)} Unlock F2 and pick a fiber that isn't in use.`) });
+      } else if (arriving && !f2Source(s).start) {
+        const src = f2Source(s);
+        warn(p.id, `The F2 fiber for ${eqName(s, p)} isn't spliced back to the start of the project yet, so it reads ${f2Label(s)}.`, "f2-untraced",
+          { ...sp, go: caseGo(point(src.cable.from) || p, `Splice ${src.cable.name} #${src.n} here to the fiber feeding it.`) });
       }
       const homes = plan.points.filter((h) => h.type === "nid" && homeSplitter(h) === s);
       const ports = splitterPorts(s);
@@ -558,6 +562,7 @@ const CHECK_KINDS = {
   "splitter-no-f2": "splitters with no F2 count",
   "f2-past": "F2 counts past the end of the cable",
   "f2-taken": "F2 counts already in use",
+  "f2-untraced": "F2 fibers not spliced back to the start",
   "splitter-over": "splitters with more homes than ports",
   "splitter-idle": "splitters that feed no homes",
   "cable-bigger": "cables bigger than their feed",

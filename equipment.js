@@ -222,11 +222,9 @@ function openEquipment(locId, startKind) {
       if (eq.type === "splitter") {
         // F2: the app's next free fiber (locked), or a fiber picked by hand.
         const c = feederAt(p.id, eq);
-        const max = c ? c.fibers : 432;
         const opts = [{ value: "", label: "Not set" }];
-        for (let n = 1; n <= max; n++) {
-          const problem = n === eq.f2 ? "" : f2Problem(p, eq, n);
-          opts.push({ value: n, label: f2Text(n) + (problem ? " (in use)" : ""), disabled: !!problem });
+        for (const ch of f2Choices(p, eq)) {
+          opts.push({ value: ch.n, label: ch.label + (c ? ` (${c.name} #${ch.n})` : "") + (ch.problem ? " (in use)" : ""), disabled: !!ch.problem });
         }
         const sel = selectEl(opts, eq.f2 || "");
         sel.addEventListener("change", () => {
@@ -514,9 +512,10 @@ function f2Hint(loc, eq) {
   const f = colorCode(c.fibers)[eq.f2 - 1];
   if (!f) return "";
   const here = `${c.name} #${eq.f2}: ${f.tubeColor.name} tube, ${f.fiberColor.name} fiber.`;
-  // A terminal tail: say where it's spliced on the way back.
+  // Where it's spliced on the way back to the start.
   const src = f2Source(eq);
-  return src && src.traced ? `${here} Spliced to ${src.cable.name} #${src.n} upstream.` : here;
+  if (src && src.start) return src.traced ? `${here} Spliced back to ${src.cable.name} #${src.n} at the start: ${f2Text(src.n)}.` : here;
+  return `${here} Not spliced back to the start yet${src && src.traced ? `: it reaches ${src.cable.name} #${src.n}` : ""}.`;
 }
 
 // --- Card and port editor (shelves, panels, terminals) ---
