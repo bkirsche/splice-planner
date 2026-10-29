@@ -102,6 +102,83 @@ function printJust(page) {
   window.print();
 }
 
+// Places where a cable only passes through show on the overview, not
+// on a page of their own.
+function printableLocations(model) {
+  return spliceLocations(model).filter((p) => model.rowsAt(p.id).rows.some(rowPhaseShown) || crossConnectsAt(p.id).some(phaseShown));
+}
+
+// The field pages for some splice areas (areas.js): every location with
+// splices in each area, in route order, numbered through.
+function printAreas(ids) {
+  printJust((model) => {
+    const keep = new Set(ids.flatMap((id) => areaWalk(point(id)).members.map((m) => m.id)));
+    const locs = printableLocations(model).filter((p) => keep.has(p.id));
+    const out = document.createDocumentFragment();
+    locs.forEach((L, i) => out.append(locationPage(model, L, i + 1, locs.length)));
+    if (!locs.length) out.append(el("p", "", "Nothing is spliced in these areas yet."));
+    return out;
+  });
+}
+
+// Pick the areas to print: all of them to start with.
+function openAreaPrint(only) {
+  const model = buildSpliceModel();
+  const printable = new Set(printableLocations(model).map((p) => p.id));
+  const areas = areaStarts().map((a) => {
+    const w = areaWalk(a);
+    return { a, w, pages: w.members.filter((m) => printable.has(m.id)).length };
+  });
+  const picked = new Set(only ? [only] : areas.filter((x) => x.pages).map((x) => x.a.id));
+  openForm("Print splice areas", (body, foot) => {
+    body.append(el("p", "hint", "Each area prints a page for every location with splices in it: its closure first, then the spots after it up to the next closure. 11x17 landscape."));
+    const list = el("div", "print-parts");
+    const count = el("p", "hint strong");
+    const go = btnEl("", () => {
+      const ids = areas.filter((x) => picked.has(x.a.id)).map((x) => x.a.id);
+      finish();
+      printAreas(ids);
+    }, "btn big");
+    const update = () => {
+      const n = areas.filter((x) => picked.has(x.a.id)).reduce((t, x) => t + x.pages, 0);
+      count.textContent = `${plural(picked.size, "area")} picked: ${plural(n, "page")}.`;
+      go.replaceChildren(iconEl("sheet"), document.createTextNode(" Print / Save PDF"));
+      go.disabled = !n;
+    };
+    const all = el("label", "check-row");
+    const allBox = inputEl("checkbox");
+    allBox.checked = picked.size === areas.length;
+    all.append(allBox, el("span", "", "All areas"));
+    allBox.addEventListener("change", () => {
+      picked.clear();
+      if (allBox.checked) for (const x of areas) picked.add(x.a.id);
+      for (const b of list.querySelectorAll("input[data-area]")) b.checked = allBox.checked;
+      update();
+    });
+    list.append(all);
+    for (const { a, w, pages } of areas) {
+      const row = el("label", "check-row");
+      const box = inputEl("checkbox");
+      box.dataset.area = a.id;
+      box.checked = picked.has(a.id);
+      box.addEventListener("change", () => {
+        if (box.checked) picked.add(a.id);
+        else picked.delete(a.id);
+        allBox.checked = picked.size === areas.length;
+        update();
+      });
+      const text = el("span");
+      text.append(el("b", "", a.name), document.createTextNode(` · ${plural(w.homes.length, "home")} · ${pages ? plural(pages, "page") : "nothing spliced yet"}`));
+      row.append(box, text);
+      list.append(row);
+    }
+    body.append(list, count);
+    if (printBlocked()) body.append(el("p", "inline-warn", "Printing doesn't work inside this preview. Save your plan, then open it on the website to print."));
+    foot.append(btnEl("Cancel", finish, "btn ghost"), go);
+    update();
+  });
+}
+
 function printLocation(locId) {
   printJust((model) => locationPage(model, point(locId), 1, 1));
 }
@@ -147,10 +224,7 @@ function buildSheet() {
     return;
   }
   const parts = printParts();
-  // Places where a cable only passes through show on the overview, not
-  // on a page of their own.
-  const locs = parts.locations ? spliceLocations(model).filter((p) =>
-    model.rowsAt(p.id).rows.some(rowPhaseShown) || crossConnectsAt(p.id).some(phaseShown)) : [];
+  const locs = parts.locations ? printableLocations(model) : [];
   // Location pages follow the overview and any map sheets.
   const pageOf = new Map(locs.map((p, i) => [p.id, i + 1]));
 

@@ -445,7 +445,14 @@ function renderAreaBar() {
     startView();
   }, "btn ghost");
   full.title = "Show the whole route, every location at once";
-  areaBar.append(crumbs, note, legend, full);
+  // Field pages for this area, or (on the map) a pick of areas.
+  const pr = btnEl("", (e) => {
+    e.stopPropagation();
+    openAreaPrint(a ? a.id : null);
+  }, "btn ghost");
+  pr.append(iconEl("sheet"), document.createTextNode(a ? " Print this area" : " Print areas"));
+  pr.title = a ? `Print the field pages for the ${a.name} area` : "Pick splice areas and print their field pages";
+  areaBar.append(crumbs, note, legend, pr, full);
 }
 
 areaBtn.addEventListener("click", (e) => {
