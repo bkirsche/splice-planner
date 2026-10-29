@@ -104,6 +104,7 @@ function renderHeader() {
     opts.push({ value: "all", label: "One phase" });
   }
   if (!isGuest()) opts.push({ value: "+", label: "+ Add a phase" });
+  if (!isGuest() && hasPhases()) opts.push({ value: "rename", label: "Rename phases…" });
   phasePick.replaceChildren(...selectEl(opts).childNodes);
   phasePick.value = viewIdx() === null ? "all" : plan.phase;
   phasePick.hidden = isGuest() && !hasPhases();
@@ -114,6 +115,10 @@ function renderHeader() {
 }
 
 phasePick.addEventListener("change", () => {
+  if (phasePick.value === "rename") {
+    phasePick.value = viewIdx() === null ? "all" : plan.phase;
+    return openProject(true);
+  }
   if (phasePick.value === "+") {
     const before = JSON.stringify(plan);
     const ph = addPhase();
@@ -130,8 +135,10 @@ phasePick.addEventListener("change", () => {
 
 titleBtn.addEventListener("click", openProject);
 
-// Title and phase names.
-function openProject() {
+// Title and phase names. `phases`: start in the first phase's name box
+// (from "Rename phases…"). A phase can be called anything: "Phase 2",
+// "Model homes", "North side".
+function openProject(phases) {
   if (isGuest()) {
     return openForm("Project", (body, foot) => {
       body.append(el("p", "cable-annotation", plan.title || "Untitled project"), el("p", "hint", authorLine() || "No names on this plan yet."));
@@ -161,6 +168,13 @@ function openProject() {
       for (const [ph, n] of names) if (n.value.trim()) ph.name = n.value.trim();
       finish();
     });
+    if (phases && names.length) {
+      // After openForm puts the cursor in the title box.
+      requestAnimationFrame(() => {
+        names[0][1].focus();
+        names[0][1].select();
+      });
+    }
   });
 }
 
