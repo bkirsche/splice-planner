@@ -424,8 +424,12 @@ function cableKindText(c) {
 const WIRE_COLORS = { cable: "#e5484d", "splitter-tail": "#3e8ef7", "terminal-tail": "#35b27c" };
 const NO_WIRE = "#4a5866";
 
+// Drops to homes take the home icon's color, so they stand apart from
+// the cables.
 function wireColor(c) {
-  return c ? WIRE_COLORS[cableKind(c)] || WIRE_COLORS.cable : NO_WIRE;
+  if (!c) return NO_WIRE;
+  if (cableKind(c) === "cable" && isDrop(c)) return LOC_META.nid.color;
+  return WIRE_COLORS[cableKind(c)] || WIRE_COLORS.cable;
 }
 
 // Drops to homes are listed with the homes, not with the cables.
