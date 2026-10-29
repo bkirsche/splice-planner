@@ -1710,6 +1710,20 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .rt-table tr.flash td { animation: rt-flash 1.6s ease-out; }
 @keyframes rt-flash { from { background: color-mix(in srgb, var(--accent) 45%, var(--card)); } }
 .rt-table tr.past { opacity: 0.55; }
+.rt-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.rt-fill { background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.rt-tools-label { font-size: 0.85rem; color: var(--muted); }
+.rt-tools-label.strong { color: var(--text); font-weight: 700; }
+.rt-select { font: inherit; font-size: 0.9rem; color: var(--text); background: var(--card-2); border: 1px solid var(--border-2); border-radius: 8px; padding: 6px 8px; max-width: 260px; }
+.rt-port { width: 70px; font: inherit; padding: 6px 8px; }
+.rt-msg { font-size: 0.85rem; color: var(--danger, #e5484d); }
+.rt-edit { display: table-cell; }
+.rt-edit .lock-btn { margin-right: 6px; vertical-align: middle; }
+.rt-off { margin-left: 6px; padding: 2px 6px; font-size: 0.75rem; font-weight: 700; color: #1a1300; background: #f5b83d; border-radius: 6px; }
+.rt-tick { width: 34px; }
+.rt-tick input { width: 20px; height: 20px; }
+.rt-table tr.ticked td { background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
+.rt-empty { padding: 12px; }
 
 /* --- Grid layout (grid.js): a location in each cell, + on every side --- */
 .grid-board { position: relative; }

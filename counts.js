@@ -45,6 +45,11 @@ function feedingLocation(locId) {
 // placed to be spliced by hand (handOnly) only takes homes put on it by
 // hand; the app looks further up for one that feeds them by itself.
 function homeSplitter(home) {
+  // Put on a splitter off its route on purpose (the Table's override).
+  if (home.ds && home.ds.offRoute) {
+    const s = splitterById(home.ds.splitterId);
+    if (s) return s;
+  }
   const path = incomingPath(home.id);
   let loc = path && feedingLocation(path.from);
   while (loc) {
@@ -55,6 +60,28 @@ function homeSplitter(home) {
     loc = up && feedingLocation(up.from);
   }
   return null;
+}
+
+function splitterById(id) {
+  for (const p of plan.points) for (const s of splittersAt(p)) if (s.id === id) return s;
+  return null;
+}
+
+// The splitters a home can be put on along its route: those at each
+// location up the route, as far as the first one that feeds homes by
+// itself. Any other splitter is an override (ds.offRoute).
+function routeSplitters(home) {
+  const out = [];
+  const path = incomingPath(home.id);
+  let loc = path && feedingLocation(path.from);
+  while (loc) {
+    const list = splittersAt(loc);
+    out.push(...list);
+    if (list.some((s) => !s.handOnly)) break;
+    const up = incomingPath(loc.id);
+    loc = up && feedingLocation(up.from);
+  }
+  return out;
 }
 
 function homeF2(home) {
@@ -279,9 +306,13 @@ function putHomeOnPort(home, s, port) {
   const other = usedPorts(s, home.id).get(port);
   const old = home.ds ? { ...home.ds } : null;
   home.ds = { splitterId: s.id, port };
+  if (!routeSplitters(home).includes(s)) home.ds.offRoute = true;
   home.dsManual = true;
   if (other) {
-    if (other.dsManual && old && old.splitterId === s.id) other.ds = old;
+    if (other.dsManual && old && old.splitterId === s.id) {
+      other.ds = { splitterId: s.id, port: old.port };
+      if (!routeSplitters(other).includes(s)) other.ds.offRoute = true;
+    }
     else {
       delete other.ds;
       other.dsManual = false;
