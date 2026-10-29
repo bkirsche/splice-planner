@@ -1,12 +1,62 @@
 // The Table layout: every location in route order, each with the homes
-// it feeds as rows (lot, splitter, port, F2, DS, drop). Suits a big job
+// it feeds as rows (lot, splitter, port, F2, DS, drop), or one flat list
+// sorted by F2, name, lot and so on. Suits a big job
 // read like a spreadsheet. Each home's splitter and port, and each
 // splitter's F2, can be picked right in the table; ticked homes fill a
 // splitter in order, and ticked splitters get F2s numbered in order.
 // Tap a location or a home's name for its menu.
 
 const routeTable = document.getElementById("route-table");
-const tableFilter = { loc: "", splitter: "", issues: false, splittersOnly: false };
+const tableFilter = { loc: "", splitter: "", issues: false, splittersOnly: false, sort: "route", desc: false };
+
+// --- Sorting ---
+// Route order keeps each location's homes under it. Any other order is
+// one flat list, each row saying where it is.
+const HOME_SORTS = [["route", "Route order"], ["name", "Home"], ["lot", "Lot"], ["splitter", "Splitter"], ["f2", "F2"], ["ds", "DS"], ["location", "Location"]];
+const SPLITTER_SORTS = [["route", "Route order"], ["name", "Splitter"], ["f2", "F2"], ["free", "Ports free"], ["location", "Location"]];
+
+const byText = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
+
+// The F2 count from the start of the project, as a number to sort on.
+function f2SortNum(s) {
+  if (!s || !s.f2) return null;
+  const src = f2Source(s);
+  return !src || src.start ? (src ? src.n : s.f2) : null;
+}
+
+// Compare two values, blanks always last whichever way it runs.
+function sortCompare(a, b, desc) {
+  const none = (v) => v === null || v === undefined || v === "";
+  if (none(a) || none(b)) return none(a) - none(b);
+  const r = typeof a === "number" && typeof b === "number" ? a - b : byText(a, b);
+  return desc ? -r : r;
+}
+
+function homeSortKey(L, h, key) {
+  const s = homeSplitter(h);
+  if (key === "name") return h.name;
+  if (key === "lot") return h.lot && /^\d+$/.test(h.lot) ? Number(h.lot) : h.lot || "";
+  if (key === "splitter") return s ? eqLabel(s) : "";
+  if (key === "f2") return f2SortNum(s);
+  if (key === "ds") return homeDs(h) ? dsNumber(h) : null;
+  return L.name;
+}
+
+function splitterSortKey(L, s, key) {
+  if (key === "name") return eqLabel(s);
+  if (key === "f2") return f2SortNum(s);
+  if (key === "free") return splitterPorts(s) - usedPorts(s).size;
+  return L.name;
+}
+
+function setTableSort(key) {
+  if (tableFilter.sort === key && key !== "route") tableFilter.desc = !tableFilter.desc;
+  else {
+    tableFilter.sort = key;
+    tableFilter.desc = false;
+  }
+  renderTable();
+}
 const tableTicked = new Set(); // ticked home ids
 const tableTickedSplitters = new Set(); // ticked splitter ids
 
@@ -280,7 +330,20 @@ function tableTools(shownHomes) {
   const pr = btnEl("", () => printJust(() => assignmentPage(true)), "btn ghost");
   pr.append(iconEl("sheet"), document.createTextNode(" Print this list"));
   pr.title = `Print ${what} in large type, one location after another.`;
-  bar.append(el("span", "rt-tools-label", "Show"), lSel, sSel, only, issues, xl, pr);
+  const sorts = tableFilter.splittersOnly ? SPLITTER_SORTS : HOME_SORTS;
+  if (!sorts.some(([k]) => k === tableFilter.sort)) tableFilter.sort = "route";
+  const sortSel = selectEl(sorts.map(([value, label]) => ({ value, label })), tableFilter.sort);
+  sortSel.className = "rt-select";
+  sortSel.setAttribute("aria-label", "Sort by");
+  sortSel.addEventListener("change", () => {
+    tableFilter.sort = sortSel.value;
+    tableFilter.desc = false;
+    renderTable();
+  });
+  const dir = btnEl(tableFilter.desc ? "High to low ↓" : "Low to high ↑", () => ((tableFilter.desc = !tableFilter.desc), renderTable()), "btn ghost rt-dir");
+  dir.hidden = tableFilter.sort === "route";
+  dir.title = "Flip the order";
+  bar.append(el("span", "rt-tools-label", "Show"), lSel, sSel, only, issues, el("span", "rt-tools-label", "Sort by"), sortSel, dir, xl, pr);
 
   const wrap = el("div");
   wrap.append(bar);
@@ -340,12 +403,94 @@ function tableTools(shownHomes) {
   return wrap;
 }
 
+// A location's row: name, what feeds it, its splitters (all, or just `only`).
+function tableLocRow(L, cols, homes, only) {
+  const tr = el("tr", "rt-loc" + (L.id === selectedId ? " selected" : "") + (phasePast(L) ? " past" : ""));
+  tr.dataset.id = L.id;
+  const td = el("td");
+  td.colSpan = cols;
+  td.style.paddingLeft = `${12 + (only ? 0 : Math.min(routeDepth(L.id), 12) * 14)}px`;
+  const name = btnEl("", (e) => openMenu(L.id, e), "rt-name");
+  name.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    openMenu(L.id, e);
+  });
+  name.append(iconEl((LOC_META[L.type] || {}).icon || "pin"), document.createTextNode(L.name));
+  const bits = [typeLabel(L.type)];
+  const c = incomingCable(L.id);
+  if (c) bits.push(`${c.name} · ${c.fibers}F${cableKind(c) !== "cable" ? ` ${cableKindText(c).toLowerCase()}` : ""} from ${point(c.from).name}`);
+  else if (L.id !== plan.points[0].id) bits.push(`from ${point(incomingPath(L.id).from).name}, no cable`);
+  if (homes.length) bits.push(plural(homes.length, "home"));
+  td.append(name, el("span", "rt-sub", bits.join(" · ")));
+  const spl = only ? [only] : splittersAt(L);
+  if (spl.length) {
+    const line = el("div", "rt-spls");
+    for (const s of spl) line.append(tableSplitterF2(L, s));
+    td.append(line);
+  }
+  tr.append(td);
+  return tr;
+}
+
+// A home's row. `flat` (a sorted list) says which location it hangs off.
+function tableHomeRow(L, h, terms, flat) {
+  const row = el("tr", "rt-home" + (h.id === selectedId ? " selected" : "") + (phasePast(h) ? " past" : "") + (tableTicked.has(h.id) ? " ticked" : ""));
+  row.dataset.id = h.id;
+  const tick = inputEl("checkbox", "", { "aria-label": `Tick ${h.name}` });
+  tick.checked = tableTicked.has(h.id);
+  tick.addEventListener("change", () => {
+    if (tick.checked) tableTicked.add(h.id);
+    else tableTicked.delete(h.id);
+    renderTable();
+  });
+  const tickCell = el("td", "rt-tick");
+  tickCell.append(tick);
+  const cell = el("td");
+  cell.style.paddingLeft = `${12 + (flat ? 0 : Math.min(routeDepth(L.id), 12) * 14)}px`;
+  const home = btnEl(h.name, (e) => openMenu(h.id, e), "rt-home-btn");
+  home.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    openMenu(h.id, e);
+  });
+  cell.append(home);
+  if (flat) cell.append(el("div", "rt-sub", `at ${L.name}`));
+  const s = homeSplitter(h);
+  const drop = incomingCable(h.id);
+  const tp = homeTerminalPort(h);
+
+  // Splitter: the lock (automatic or by hand), then the dropdown.
+  const sCell = el("td", "rt-edit");
+  sCell.append(lockEl(!h.dsManual, (lock) => withUndo(lock ? `${h.name} is back on automatic counts.` : `${h.name} is set by hand now.`, () => {
+    if (lock) delete h.ds;
+    h.dsManual = !lock;
+  }), "the splitter and port"), tableSplitterSelect(h, s));
+  if (h.ds && h.ds.offRoute && s) sCell.append(el("span", "rt-off", "off route"));
+  const pCell = el("td", "rt-edit");
+  pCell.append(s ? tablePortSelect(h, s) : el("span", "muted", "—"));
+  row.append(tickCell, cell, el("td", "mono", h.lot || "—"), sCell, pCell,
+    el("td", "mono strong", s && s.f2 ? f2CellFor(s) : "—"), el("td", "mono strong", homeDs(h) ? dsCell(h) : "—"),
+    el("td", "", drop ? `${drop.name} · ${drop.fibers}F` : "—"), ...(terms ? [el("td", "", tp ? tp.text : "—")] : []));
+  return row;
+}
+
 function renderTable() {
   const homesAll = plan.points.filter((p) => p.type === "nid");
   const terms = homesAll.some((h) => homeTerminalPort(h));
+  const sorted = tableFilter.sort !== "route";
   const table = el("table", "rt-table");
+  // Tapping a heading sorts by it; tapping it again flips the order.
+  const heads = [["", null], ["Home", "name"], ["Lot", "lot"], ["Splitter", "splitter"], ["Port", null], ["F2", "f2"], ["DS", "ds"], ["Drop", null], ...(terms ? [["Terminal port", null]] : [])];
   const head = el("tr");
-  for (const h of ["", "Home", "Lot", "Splitter", "Port", "F2", "DS", "Drop", ...(terms ? ["Terminal port"] : [])]) head.append(el("th", "", h));
+  for (const [text, key] of heads) {
+    const th = el("th");
+    if (key && !tableFilter.splittersOnly) {
+      const on = tableFilter.sort === key;
+      const b = btnEl(text + (on ? (tableFilter.desc ? " ↓" : " ↑") : ""), () => setTableSort(key), "rt-sort" + (on ? " on" : ""));
+      b.title = `Sort by ${text}`;
+      th.append(b);
+    } else th.textContent = text;
+    head.append(th);
+  }
   const thead = el("thead");
   thead.append(head);
   table.append(thead);
@@ -355,6 +500,8 @@ function renderTable() {
   const shown = [];
   let splittersShown = 0;
   if (tableFilter.splittersOnly) table.classList.add("splitters-only");
+  const flatSplitters = [];
+  const flatHomes = [];
   for (const L of routeOrder()) {
     if (L.type === "nid" || !phaseShown(L)) continue;
     const homes = shownPaths(L.id).map((x) => point(x.to)).filter((m) => m.type === "nid" && tableHomeShown(m, L));
@@ -362,75 +509,35 @@ function renderTable() {
       const spl = splittersAt(L);
       if (!spl.length || (tableFilter.loc && L.id !== tableFilter.loc) || (tableFilter.splitter && !spl.some((x) => x.id === tableFilter.splitter))) continue;
       splittersShown++;
+      if (sorted) {
+        for (const s of spl) if (!tableFilter.splitter || s.id === tableFilter.splitter) flatSplitters.push({ L, s, homes });
+        continue;
+      }
     } else if (filtering && !homes.length) continue;
+    if (sorted && !tableFilter.splittersOnly) {
+      for (const h of homes) flatHomes.push({ L, h });
+      continue;
+    }
     const port = (h) => (h.ds ? h.ds.port : 999);
     homes.sort((a, b) => port(a) - port(b) || a.name.localeCompare(b.name, undefined, { numeric: true }));
-
-    // The location's own row: name, what feeds it, its splitters.
-    const tr = el("tr", "rt-loc" + (L.id === selectedId ? " selected" : "") + (phasePast(L) ? " past" : ""));
-    tr.dataset.id = L.id;
-    const td = el("td");
-    td.colSpan = cols;
-    td.style.paddingLeft = `${12 + Math.min(routeDepth(L.id), 12) * 14}px`;
-    const name = btnEl("", (e) => openMenu(L.id, e), "rt-name");
-    name.addEventListener("contextmenu", (e) => {
-      e.preventDefault();
-      openMenu(L.id, e);
-    });
-    name.append(iconEl((LOC_META[L.type] || {}).icon || "pin"), document.createTextNode(L.name));
-    const bits = [typeLabel(L.type)];
-    const c = incomingCable(L.id);
-    if (c) bits.push(`${c.name} · ${c.fibers}F${cableKind(c) !== "cable" ? ` ${cableKindText(c).toLowerCase()}` : ""} from ${point(c.from).name}`);
-    else if (L.id !== plan.points[0].id) bits.push(`from ${point(incomingPath(L.id).from).name}, no cable`);
-    if (homes.length) bits.push(plural(homes.length, "home"));
-    td.append(name, el("span", "rt-sub", bits.join(" · ")));
-    const spl = splittersAt(L);
-    if (spl.length) {
-      const line = el("div", "rt-spls");
-      for (const s of spl) line.append(tableSplitterF2(L, s));
-      td.append(line);
-    }
-    tr.append(td);
-    body.append(tr);
-
+    body.append(tableLocRow(L, cols, homes));
     for (const h of tableFilter.splittersOnly ? [] : homes) {
       shown.push(h);
-      const row = el("tr", "rt-home" + (h.id === selectedId ? " selected" : "") + (phasePast(h) ? " past" : "") + (tableTicked.has(h.id) ? " ticked" : ""));
-      row.dataset.id = h.id;
-      const tick = inputEl("checkbox", "", { "aria-label": `Tick ${h.name}` });
-      tick.checked = tableTicked.has(h.id);
-      tick.addEventListener("change", () => {
-        if (tick.checked) tableTicked.add(h.id);
-        else tableTicked.delete(h.id);
-        renderTable();
-      });
-      const tickCell = el("td", "rt-tick");
-      tickCell.append(tick);
-      const cell = el("td");
-      cell.style.paddingLeft = `${12 + Math.min(routeDepth(L.id), 12) * 14}px`;
-      const home = btnEl(h.name, (e) => openMenu(h.id, e), "rt-home-btn");
-      home.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        openMenu(h.id, e);
-      });
-      cell.append(home);
-      const s = homeSplitter(h);
-      const drop = incomingCable(h.id);
-      const tp = homeTerminalPort(h);
-
-      // Splitter: the lock (automatic or by hand), then the dropdown.
-      const sCell = el("td", "rt-edit");
-      sCell.append(lockEl(!h.dsManual, (lock) => withUndo(lock ? `${h.name} is back on automatic counts.` : `${h.name} is set by hand now.`, () => {
-        if (lock) delete h.ds;
-        h.dsManual = !lock;
-      }), "the splitter and port"), tableSplitterSelect(h, s));
-      if (h.ds && h.ds.offRoute && s) sCell.append(el("span", "rt-off", "off route"));
-      const pCell = el("td", "rt-edit");
-      pCell.append(s ? tablePortSelect(h, s) : el("span", "muted", "—"));
-      row.append(tickCell, cell, el("td", "mono", h.lot || "—"), sCell, pCell,
-        el("td", "mono strong", s && s.f2 ? f2CellFor(s) : "—"), el("td", "mono strong", homeDs(h) ? dsCell(h) : "—"),
-        el("td", "", drop ? `${drop.name} · ${drop.fibers}F` : "—"), ...(terms ? [el("td", "", tp ? tp.text : "—")] : []));
-      body.append(row);
+      body.append(tableHomeRow(L, h, terms, false));
+    }
+  }
+  // A sorted list: one row per splitter or home, in the chosen order.
+  const key = tableFilter.sort;
+  const tie = (a, b) => byText(a.L.name, b.L.name);
+  if (flatSplitters.length) {
+    flatSplitters.sort((a, b) => sortCompare(splitterSortKey(a.L, a.s, key), splitterSortKey(b.L, b.s, key), tableFilter.desc) || tie(a, b));
+    for (const { L, s, homes } of flatSplitters) body.append(tableLocRow(L, cols, homes.filter((h) => homeSplitter(h) === s), s));
+  }
+  if (flatHomes.length) {
+    flatHomes.sort((a, b) => sortCompare(homeSortKey(a.L, a.h, key), homeSortKey(b.L, b.h, key), tableFilter.desc) || tie(a, b) || byText(a.h.name, b.h.name));
+    for (const { L, h } of flatHomes) {
+      shown.push(h);
+      body.append(tableHomeRow(L, h, terms, true));
     }
   }
   for (const id of [...tableTicked]) if (!point(id)) tableTicked.delete(id);
