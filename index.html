@@ -12,7 +12,14 @@
   <meta name="apple-mobile-web-app-title" content="Splice Plan">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="styles.css">
+  <script>
+    // The app's version: bump it with every change. Each file is loaded as
+    // "name?v=<version>", so a normal refresh fetches the new copy instead
+    // of one the browser kept. The service worker (sw.js) takes the same
+    // number for its offline cache.
+    const APP_VERSION = "66";
+    document.write(`<link rel="stylesheet" href="styles.css?v=${APP_VERSION}">`);
+  </script>
   <!-- The printouts carry the dark-text logo; load it ahead so it is there when printing. -->
   <link rel="preload" as="image" href="assets/logo.png">
 </head>
@@ -260,35 +267,15 @@
   <!-- Field sheet: built when printing, 11x17 landscape -->
   <section id="print-sheet" class="print-sheet"></section>
 
-  <script src="ui.js"></script>
-  <script src="users.js"></script>
-  <script src="catalog.js"></script>
-  <script src="app.js"></script>
-  <script src="pan.js"></script>
-  <script src="fold.js"></script>
-  <script src="table.js"></script>
-  <script src="grid.js"></script>
-  <script src="phases.js"></script>
-  <script src="areas.js"></script>
-  <script src="paths.js"></script>
-  <script src="equipment.js"></script>
-  <script src="import.js"></script>
-  <script src="counts.js"></script>
-  <script src="files.js"></script>
-  <script src="splices.js"></script>
-  <script src="connect.js"></script>
-  <script src="edits.js"></script>
-  <script src="check.js"></script>
-  <script src="print.js"></script>
-  <script src="xlsx.js"></script>
-  <script src="features.js"></script>
-  <script src="features-equipment.js"></script>
-  <script src="field.js"></script>
-  <script src="trace.js"></script>
+  <script>
+    for (const f of ["ui.js", "users.js", "catalog.js", "app.js", "pan.js", "fold.js", "table.js", "grid.js", "phases.js", "areas.js", "paths.js", "equipment.js", "import.js", "counts.js", "files.js", "splices.js", "connect.js", "edits.js", "check.js", "print.js", "xlsx.js", "features.js", "features-equipment.js", "field.js", "trace.js"]) {
+      document.write(`<script src="${f}?v=${APP_VERSION}"><\/script>`);
+    }
+  </script>
   <script>
     // Works offline once installed. Skipped when opened straight from a file.
     if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      navigator.serviceWorker.register("sw.js").catch(() => {});
+      navigator.serviceWorker.register(`sw.js?v=${APP_VERSION}`).catch(() => {});
     }
   </script>
 </body>

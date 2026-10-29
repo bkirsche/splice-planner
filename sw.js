@@ -1,8 +1,12 @@
 // Keeps the app working with no signal in the field: every file is
 // cached on first visit, and updates are picked up the next time it
 // opens online.
+//
+// The version comes from index.html (APP_VERSION), which registers this
+// file as "sw.js?v=<version>": a new version is a new service worker with
+// a fresh cache. Nothing to bump here.
 
-const CACHE = "splice-planner-v65";
+const CACHE = `splice-planner-v${new URL(location).searchParams.get("v") || "0"}`;
 const FILES = [
   "./", "index.html", "styles.css", "ui.js", "users.js", "catalog.js", "app.js", "pan.js", "fold.js", "table.js", "grid.js", "phases.js", "areas.js", "paths.js", "equipment.js", "import.js", "counts.js", "files.js",
   "splices.js", "connect.js", "edits.js", "check.js", "print.js", "xlsx.js", "features.js", "features-equipment.js", "field.js", "trace.js", "manifest.json",
@@ -11,7 +15,8 @@ const FILES = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)));
+  // Straight from the server, never a copy the browser kept.
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: "reload" })))));
   self.skipWaiting();
 });
 
