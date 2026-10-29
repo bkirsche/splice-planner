@@ -261,6 +261,28 @@ function openEquipment(locId, startKind) {
         row.append(sizeRow, f2Row, el("span", "eq-meta mono", `DS ${usedPorts(eq).size}/${splitterPorts(eq)}`), note);
       }
       if (eq.type === "closure") {
+        // The kind of case can change at any time. The splices belong to
+        // the location, not the case, so every one of them stays.
+        const kinds = templatesFor("closure");
+        const model = selectEl([
+          ...(kinds.some((t) => t.id === eq.template) ? [] : [{ value: "", label: eq.model || "Custom" }]),
+          ...kinds.map((t) => ({ value: t.id, label: t.label, group: t.group })),
+        ], kinds.some((t) => t.id === eq.template) ? eq.template : "");
+        model.dataset.field = "model";
+        model.addEventListener("change", () => {
+          const t = kinds.find((x) => x.id === model.value);
+          if (!t) return;
+          withUndo(`${eq.name} is now a ${t.model}. Its splices are kept.`, () => {
+            if (eq.name === eq.model) eq.name = t.model;
+            Object.assign(eq, { model: t.model, template: t.id, trays: t.trays, slots: t.slots });
+            if (t.max) eq.max = t.max;
+            else delete eq.max;
+          }, () => openEquipment(locId));
+          renderList();
+        });
+        const m = el("label", "inline-field");
+        m.append(el("span", "", "Case"), model);
+        row.append(m);
         const trays = inputEl("number", eq.trays, { min: 1, max: 48 });
         const slots = el("select");
         for (const n of new Set([...TRAY_SIZES, eq.slots].sort((x, y) => x - y))) {
@@ -287,6 +309,9 @@ function openEquipment(locId, startKind) {
         if (eq.max && eq.trays * eq.slots > eq.max) {
           row.append(el("span", "field-hint warn", `${eq.trays * eq.slots} splices is over the ${eq.max} this case holds.`));
         }
+        // Splices placed by hand on a tray or slot this case doesn't have.
+        const off = Object.values(p.trays || {}).filter((ts) => ts.tray > eq.trays || ts.slot > eq.slots).length;
+        if (off) row.append(el("span", "field-hint warn", `${plural(off, "splice")} ${off === 1 ? "sits" : "sit"} on a tray or slot this case doesn't have: open the splice case to move ${off === 1 ? "it" : "them"}.`));
       }
       if (tailKind(p, eq)) {
         // The tail's length and where it starts, changed here at any
