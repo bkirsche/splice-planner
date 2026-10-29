@@ -53,7 +53,19 @@ addFeatureType({
   cols: [
     feEquipmentName(),
     feEquipmentLocation(),
-    feEquipmentModel(),
+    // Picked from the splice case list; trays and tray size follow, and
+    // the splices stay (they belong to the location).
+    { key: "model", label: "Model", edit: "select", get: (eq) => eq.template || `model:${eq.model || ""}`,
+      text: (eq) => eq.model || "",
+      options: (eq) => [
+        ...[...new Set((eq ? [eq] : feEquipmentRows(["closure"])).filter((x) => !templatesFor("closure").some((t) => t.id === x.template)).map((x) => x.model || ""))]
+          .map((m) => ({ value: `model:${m}`, label: m || "Custom" })),
+        ...templatesFor("closure").map((t) => ({ value: t.id, label: t.label, group: t.group })),
+      ],
+      set: (eq, v) => {
+        const t = templatesFor("closure").find((x) => x.id === v);
+        if (t) applyCaseTemplate(eq, t);
+      } },
     { key: "trays", label: "Trays", edit: "number", get: (eq) => eq.trays,
       check: (eq, v) => (Number.isFinite(v) && v >= 1 ? "" : "Enter at least 1 tray."),
       set: (eq, v) => (eq.trays = v) },

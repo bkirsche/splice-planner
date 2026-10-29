@@ -273,10 +273,7 @@ function openEquipment(locId, startKind) {
           const t = kinds.find((x) => x.id === model.value);
           if (!t) return;
           withUndo(`${eq.name} is now a ${t.model}. Its splices are kept.`, () => {
-            if (eq.name === eq.model) eq.name = t.model;
-            Object.assign(eq, { model: t.model, template: t.id, trays: t.trays, slots: t.slots });
-            if (t.max) eq.max = t.max;
-            else delete eq.max;
+            applyCaseTemplate(eq, t);
           }, () => openEquipment(locId));
           renderList();
         });
