@@ -1726,6 +1726,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .rt-empty { padding: 12px; }
 .rt-tools .rt-out { margin-left: auto; }
 .rt-table.splitters-only thead { display: none; }
+.rt-sort { padding: 0; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.rt-sort:hover, .rt-sort.on { color: var(--accent-2); }
+.rt-dir { padding: 6px 10px; }
 .print-sheet .assign-table { font-size: 13pt; }
 .print-sheet .assign-table th, .print-sheet .assign-table td { padding: 6px 9px; }
 .print-sheet .assign-table tbody { break-inside: auto; }
