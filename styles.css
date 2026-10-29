@@ -1725,6 +1725,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .rt-table tr.ticked td { background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
 .rt-empty { padding: 12px; }
 .rt-tools .rt-out { margin-left: auto; }
+.rt-table.splitters-only thead { display: none; }
 .print-sheet .assign-table { font-size: 13pt; }
 .print-sheet .assign-table th, .print-sheet .assign-table td { padding: 6px 9px; }
 .print-sheet .assign-table tbody { break-inside: auto; }
