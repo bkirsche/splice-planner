@@ -47,6 +47,54 @@ function dropPortPatches(eqId, portIds) {
   plan.xconnects = plan.xconnects.filter((x) => !gone(x.a) && !gone(x.b));
 }
 
+// Take locations and/or cable spans out of the plan, with everything
+// that pointed at them: spans starting or ending at a removed location,
+// the rest of a removed span's run, patches on their fibers and on the
+// removed locations' equipment, pins on that equipment, tails, tray
+// numbers, and homes on those splitters and terminals. Picks go with
+// their spans. Call it inside the caller's withUndo, so Undo puts it all
+// back.
+function purgeRemoved(pointIds = [], cableIds = []) {
+  const points = new Set(pointIds);
+  const cables = new Set(cableIds);
+  const eqs = new Set();
+  for (const p of plan.points) if (points.has(p.id)) for (const eq of p.equipment || []) eqs.add(eq.id);
+  for (const c of plan.cables) if (points.has(c.from) || points.has(c.to)) cables.add(c.id);
+  // A cable's run past a removed span goes too. Worked out before any
+  // span is gone, since prevSpan falls back to whatever arrives there.
+  for (let more = true; more;) {
+    more = false;
+    for (const c of plan.cables) {
+      if (!c.through || cables.has(c.id)) continue;
+      const up = prevSpan(c);
+      if (up && cables.has(up.id)) {
+        cables.add(c.id);
+        more = true;
+      }
+    }
+  }
+  const gone = (key) => {
+    const [kind, id] = key.split(":");
+    return kind === "fiber" ? cables.has(id) : eqs.has(id);
+  };
+  plan.points = plan.points.filter((p) => !points.has(p.id));
+  plan.paths = plan.paths.filter((x) => !points.has(x.from) && !points.has(x.to));
+  plan.cables = plan.cables.filter((c) => !cables.has(c.id));
+  plan.xconnects = plan.xconnects.filter((x) => !points.has(x.at) && !gone(x.a) && !gone(x.b));
+  for (const c of plan.cables) {
+    for (const [n, it] of Object.entries(c.pins || {})) if (gone(it)) delete c.pins[n];
+  }
+  for (const p of plan.points) {
+    for (const key of Object.keys(p.trays || {})) if (gone(key)) delete p.trays[key];
+    for (const eq of p.equipment || []) if (eq.tail && cables.has(eq.tail)) delete eq.tail;
+    if (p.ds && eqs.has(p.ds.splitterId)) {
+      delete p.ds;
+      p.dsManual = false;
+    }
+    if (p.tport && eqs.has(p.tport.eqId)) delete p.tport;
+  }
+}
+
 function fiberText(c, n) {
   const f = colorCode(c.fibers)[n - 1];
   if (!f) return `#${n}`;

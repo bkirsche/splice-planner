@@ -325,6 +325,14 @@ function offerUndo(text, before, reopen = null) {
   showNote(text, () => undoStep(step));
 }
 
+// A plan of its own (new, opened, resumed or cleared) starts with no
+// history, so Ctrl+Z can't bring back a plan from before it.
+function clearUndo() {
+  undoStack.length = 0;
+  clearTimeout(undoTimer);
+  undoBar.hidden = true;
+}
+
 // Put the plan back to before `step` (and drop it and anything after).
 function undoStep(step) {
   const i = undoStack.indexOf(step);

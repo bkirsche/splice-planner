@@ -502,7 +502,7 @@ function openPath(toId, cableId) {
         const span = c || { id: makeId(), from: from.id, to: to.id };
         // Everything this cable ran on to now belongs to the arriving cable.
         const spans = c ? cableSpans(c) : [span];
-        const stuck = f2Stuck(spans, arriving.fibers);
+        const stuck = resizeStuck(spans, arriving.fibers);
         if (stuck) return stuck;
         span.through = m.split(":")[0];
         span.prev = arriving.id;
@@ -530,7 +530,7 @@ function openPath(toId, cableId) {
       }
       // A span that passed through now starts a cable of its own here.
       const spans = c ? (c.through ? cableRunFrom(c) : cableSpans(c)) : [];
-      const stuck = f2Stuck(c ? spans : [{ to: goingBack() ? from.id : to.id }], n);
+      const stuck = resizeStuck(c ? spans : [{ to: goingBack() ? from.id : to.id }], n);
       if (stuck) return stuck;
       if (c) {
         delete c.through;
@@ -608,7 +608,7 @@ function openBackRun(path, c) {
       const n = parseInt(fibers.value, 10);
       const tailFt = kind === "cable" ? 0 : tail.value();
       if (tailFt === null) return "Enter the custom tail length in feet.";
-      const stuck = f2Stuck(spans, n);
+      const stuck = resizeStuck(spans, n);
       if (stuck) return stuck;
       for (const s of spans) {
         s.name = name.value.trim();
@@ -624,15 +624,36 @@ function openBackRun(path, c) {
   renderRoute();
 }
 
-// Splitters fed from these spans must still have their F2 fiber.
-function f2Stuck(spans, fibers) {
+// A cable can't shrink below a fiber still in use on these spans:
+// splitters fed from them on a hand-set F2, cables picking fibers from
+// them, their own picks and joins, and patches to their fibers.
+function resizeStuck(spans, fibers) {
   const stuck = [];
+  const over = (n) => Number(n) > fibers;
+  const ids = new Set(spans.map((s) => s.id).filter(Boolean));
   for (const s of spans) {
-    for (const sp of splittersAt(point(s.to))) {
-      if (sp.f2Manual && sp.f2 > fibers) stuck.push(`${sp.name} at ${point(s.to).name} is on F2 ${sp.f2}`);
+    const at = point(s.to);
+    for (const sp of splittersAt(at)) {
+      if (sp.f2Manual && over(sp.f2)) stuck.push(`${sp.name} at ${at.name} is on F2 ${sp.f2}`);
+    }
+    if (!s.id || incomingCable(at.id) !== s) continue;
+    for (const d of childCables(at.id).filter((x) => !x.through && x.picks)) {
+      const n = expandPicks(d.picks).map((p) => p.in).filter(over);
+      if (n.length) stuck.push(`${d.name} at ${at.name} picks #${Math.max(...n)}`);
     }
   }
-  return stuck.length ? `The cable can't be ${fibers}F: ${stuck.join("; ")}. Change those F2 counts first.` : "";
+  const start = spans[0];
+  if (start && start.id && !start.through) {
+    const out = [...expandPicks(start.picks || []).map((p) => p.out), ...Object.keys(start.pins || {})].filter(over);
+    if (out.length) stuck.push(`#${Math.max(...out)} is spliced at ${point(start.from).name}`);
+  }
+  for (const x of plan.xconnects) {
+    for (const key of [x.a, x.b]) {
+      const [kind, id, n] = key.split(":");
+      if (kind === "fiber" && ids.has(id) && over(n)) stuck.push(`#${n} is patched at ${point(x.at).name}`);
+    }
+  }
+  return stuck.length ? `The cable can't be ${fibers}F: ${[...new Set(stuck)].join("; ")}. Free those fibers first.` : "";
 }
 
 function checkPicks(ranges, inCable, outFibers, outName, c) {
