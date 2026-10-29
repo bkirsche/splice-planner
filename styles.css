@@ -1724,6 +1724,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .rt-tick input { width: 20px; height: 20px; }
 .rt-table tr.ticked td { background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
 .rt-empty { padding: 12px; }
+.rt-tools .rt-out { margin-left: auto; }
+.print-sheet .assign-table { font-size: 13pt; }
+.print-sheet .assign-table th, .print-sheet .assign-table td { padding: 6px 9px; }
+.print-sheet .assign-table tbody { break-inside: auto; }
+.print-sheet .assign-loc td { background: #eef2f5; border-top: 2px solid #333; padding-top: 9px; font-size: 13pt; }
+.print-sheet .assign-spl { margin-top: 3px; font-size: 11.5pt; font-weight: 600; }
 .rt-spls { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; }
 .rt-spl { display: inline-flex; align-items: center; gap: 8px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
 .rt-spl.ticked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }

@@ -19,7 +19,7 @@ const MIN_MAP_SCALE = 0.6;
 const TILE_HEIGHT_PX = 9.6 * 96;
 
 const printPanel = document.getElementById("print-panel");
-const PRINT_PARTS = ["overview", "locations", "summary", "tiles"];
+const PRINT_PARTS = ["overview", "locations", "summary", "assign", "tiles"];
 
 function printParts() {
   const saved = plan.print || {};
@@ -204,6 +204,50 @@ function buildSheet() {
     page.append(head, detailsTable(), cableTable(model), pathTable(), splitterTable(), homesTable(), legend());
     sheet.append(page);
   }
+
+  if (parts.assign) sheet.append(assignmentPage(false));
+}
+
+// The home and splitter list in large type, easy to read in the field:
+// each location with its splitters and F2, then its homes in port order.
+// `filtered` follows the Table layout's filters.
+function assignmentPage(filtered) {
+  const page = el("section", "print-page assign-page");
+  const head = el("header", "sheet-head small");
+  head.append(brandEl("small"), el("h2", "", `${plan.title || "Splice plan"}: homes and splitters`), el("div", "sheet-printed", printedLine()));
+  page.append(head);
+  const groups = assignmentGroups(filtered);
+  const terms = groups.some((g) => g.homes.some((h) => homeTerminalPort(h)));
+  const cols = ["Home", "Lot", "Splitter", "Port", "F2", "DS", "Drop", ...(terms ? ["Terminal port"] : []), "Done"];
+  const table = el("table", "sheet-table assign-table");
+  const tr0 = el("tr");
+  for (const c of cols) tr0.append(el("th", "", c));
+  const thead = el("thead");
+  thead.append(tr0);
+  table.append(thead);
+  for (const { loc, homes } of groups) {
+    const body = el("tbody");
+    const lr = el("tr", "assign-loc");
+    const td = el("td");
+    td.colSpan = cols.length;
+    const spl = splittersAt(loc).map((s) => `${eqLabel(s)} ${s.ratio} · ${f2Label(s)} · ${usedPorts(s).size}/${splitterPorts(s)} ports used`);
+    td.append(el("b", "", `${loc.name}`), document.createTextNode(`  ${typeLabel(loc.type)}${homes.length ? ` · ${plural(homes.length, "home")}` : ""}`));
+    if (spl.length) td.append(el("div", "assign-spl", spl.join("   |   ")));
+    lr.append(td);
+    body.append(lr);
+    for (const h of homes) {
+      const r = assignmentRow(loc, h);
+      const tr = el("tr");
+      tr.append(el("td", "strong wrap", r.home), el("td", "", r.lot || "—"),
+        el("td", "", r.splitter ? `${r.splitter}${r.splitterAt !== loc.name ? ` at ${r.splitterAt}` : ""}${r.offRoute ? " (off route)" : ""}` : "—"),
+        el("td", "strong", r.port ? String(r.port) : "—"), el("td", "strong", r.f2 || "—"), el("td", "strong", r.ds || "—"),
+        el("td", "", r.drop || "—"), ...(terms ? [el("td", "", r.terminal || "—")] : []), el("td", "checkbox-cell", "☐"));
+      body.append(tr);
+    }
+    table.append(body);
+  }
+  page.append(groups.length ? table : el("p", "", "No homes to list."));
+  return page;
 }
 
 // The overview has to fit one sheet. A big route is cut into boxes laid

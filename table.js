@@ -189,6 +189,66 @@ function tableSplitterTools() {
   return bar;
 }
 
+// --- The list as data: for Save as Excel and the printed list ---
+
+// Locations in route order with the homes they feed, the table's way
+// (phase shown, and the filters when `filtered`).
+function assignmentGroups(filtered) {
+  const out = [];
+  for (const L of routeOrder()) {
+    if (L.type === "nid" || !phaseShown(L)) continue;
+    const homes = shownPaths(L.id).map((x) => point(x.to)).filter((m) => m.type === "nid" && (!filtered || tableHomeShown(m, L)));
+    if (filtered && (tableFilter.loc || tableFilter.splitter || tableFilter.issues) && !homes.length) continue;
+    const port = (h) => (h.ds ? h.ds.port : 999);
+    homes.sort((a, b) => port(a) - port(b) || a.name.localeCompare(b.name, undefined, { numeric: true }));
+    if (homes.length || splittersAt(L).length) out.push({ loc: L, homes });
+  }
+  return out;
+}
+
+// One home's row: what the table shows, in words.
+function assignmentRow(L, h) {
+  const s = homeSplitter(h);
+  const sLoc = s && equipmentLocation(s.id);
+  const drop = incomingCable(h.id);
+  const tp = homeTerminalPort(h);
+  const port = s && h.ds && h.ds.splitterId === s.id ? h.ds.port : null;
+  return {
+    loc: L.name, home: h.name, lot: h.lot || "", splitter: s ? eqLabel(s) : "", splitterAt: sLoc ? sLoc.name : "",
+    ratio: s ? s.ratio : "", port, f2: s && s.f2 ? f2CellFor(s) : "", ds: homeDs(h) ? dsCell(h) : "",
+    drop: drop ? `${drop.name} · ${drop.fibers}F` : "", terminal: tp ? tp.text : "",
+    setBy: h.dsManual ? "By hand" : "Automatic", offRoute: !!(h.ds && h.ds.offRoute && s),
+  };
+}
+
+// Numbers stay numbers in Excel ("101", not text).
+function cellValue(v) {
+  return typeof v === "string" && /^\d+$/.test(v) ? Number(v) : v;
+}
+
+async function saveAssignmentXlsx() {
+  const homes = [["Location", "Home", "Lot", "Splitter", "Splitter at", "Size", "Port", "F2", "DS", "Drop", "Terminal port", "Set by", "Off route"]];
+  for (const { loc, homes: list } of assignmentGroups(true)) {
+    for (const h of list) {
+      const r = assignmentRow(loc, h);
+      homes.push([r.loc, r.home, cellValue(r.lot), r.splitter, r.splitterAt, r.ratio, r.port, cellValue(r.f2), cellValue(r.ds), r.drop, r.terminal, r.setBy, r.offRoute ? "Yes" : ""]);
+    }
+  }
+  const spl = [["Location", "Splitter", "Size", "F2", "Feeder fiber here", "Ports used", "Ports free", "F2 set by"]];
+  for (const { s, loc } of allSplitters()) {
+    const c = feederAt(loc.id, s);
+    const used = usedPorts(s).size;
+    spl.push([loc.name, eqLabel(s), s.ratio, cellValue(f2CellFor(s)), c && s.f2 ? `${c.name} #${s.f2}` : "", used, splitterPorts(s) - used, s.f2Manual ? "By hand" : "Automatic"]);
+  }
+  const blob = makeXlsx([
+    { name: "Homes", rows: homes, widths: [16, 30, 8, 16, 16, 7, 7, 9, 7, 18, 16, 11, 10] },
+    { name: "Splitters", rows: spl, widths: [16, 18, 7, 9, 18, 11, 11, 11] },
+  ]);
+  const base = (plan.title || "Splice plan").replace(/[\\/:*?"<>|]+/g, " ").trim();
+  const name = await saveFileAs(`${base} - homes and splitters.xlsx`, blob, { description: "Excel workbook", mime: XLSX_MIME, ext: ".xlsx" });
+  if (name) showNote(`Saved ${name}: ${plural(homes.length - 1, "home")} and ${plural(spl.length - 1, "splitter")}.`);
+}
+
 // Filters, and the tools for the ticked homes.
 function tableTools(shownHomes) {
   const bar = el("div", "rt-tools");
@@ -205,7 +265,15 @@ function tableTools(shownHomes) {
   box.checked = tableFilter.issues;
   box.addEventListener("change", () => ((tableFilter.issues = box.checked), renderTable()));
   issues.append(box, document.createTextNode("Only homes that need a look"));
-  bar.append(el("span", "rt-tools-label", "Show"), lSel, sSel, issues);
+  const filtered = tableFilter.loc || tableFilter.splitter || tableFilter.issues;
+  const what = filtered ? "the homes shown" : "every home";
+  const xl = btnEl("", () => saveAssignmentXlsx(), "btn ghost rt-out");
+  xl.append(iconEl("sheet"), document.createTextNode(" Save as Excel"));
+  xl.title = `Save ${what}, plus every splitter, as an Excel file.`;
+  const pr = btnEl("", () => printJust(() => assignmentPage(true)), "btn ghost");
+  pr.append(iconEl("sheet"), document.createTextNode(" Print this list"));
+  pr.title = `Print ${what} in large type, one location after another.`;
+  bar.append(el("span", "rt-tools-label", "Show"), lSel, sSel, issues, xl, pr);
 
   const wrap = el("div");
   wrap.append(bar);
