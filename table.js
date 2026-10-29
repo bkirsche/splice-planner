@@ -6,7 +6,7 @@
 // Tap a location or a home's name for its menu.
 
 const routeTable = document.getElementById("route-table");
-const tableFilter = { loc: "", splitter: "", issues: false };
+const tableFilter = { loc: "", splitter: "", issues: false, splittersOnly: false };
 const tableTicked = new Set(); // ticked home ids
 const tableTickedSplitters = new Set(); // ticked splitter ids
 
@@ -265,6 +265,13 @@ function tableTools(shownHomes) {
   box.checked = tableFilter.issues;
   box.addEventListener("change", () => ((tableFilter.issues = box.checked), renderTable()));
   issues.append(box, document.createTextNode("Only homes that need a look"));
+  // Homes folded away: just the locations with splitters and their F2s.
+  const only = el("label", "toggle");
+  const onlyBox = inputEl("checkbox");
+  onlyBox.checked = tableFilter.splittersOnly;
+  onlyBox.addEventListener("change", () => ((tableFilter.splittersOnly = onlyBox.checked), renderTable()));
+  only.append(onlyBox, document.createTextNode("Splitters only (hide homes)"));
+  issues.hidden = tableFilter.splittersOnly;
   const filtered = tableFilter.loc || tableFilter.splitter || tableFilter.issues;
   const what = filtered ? "the homes shown" : "every home";
   const xl = btnEl("", () => saveAssignmentXlsx(), "btn ghost rt-out");
@@ -273,7 +280,7 @@ function tableTools(shownHomes) {
   const pr = btnEl("", () => printJust(() => assignmentPage(true)), "btn ghost");
   pr.append(iconEl("sheet"), document.createTextNode(" Print this list"));
   pr.title = `Print ${what} in large type, one location after another.`;
-  bar.append(el("span", "rt-tools-label", "Show"), lSel, sSel, issues, xl, pr);
+  bar.append(el("span", "rt-tools-label", "Show"), lSel, sSel, only, issues, xl, pr);
 
   const wrap = el("div");
   wrap.append(bar);
@@ -346,10 +353,16 @@ function renderTable() {
   const cols = terms ? 9 : 8;
   const filtering = tableFilter.loc || tableFilter.splitter || tableFilter.issues;
   const shown = [];
+  let splittersShown = 0;
+  if (tableFilter.splittersOnly) table.classList.add("splitters-only");
   for (const L of routeOrder()) {
     if (L.type === "nid" || !phaseShown(L)) continue;
     const homes = shownPaths(L.id).map((x) => point(x.to)).filter((m) => m.type === "nid" && tableHomeShown(m, L));
-    if (filtering && !homes.length) continue;
+    if (tableFilter.splittersOnly) {
+      const spl = splittersAt(L);
+      if (!spl.length || (tableFilter.loc && L.id !== tableFilter.loc) || (tableFilter.splitter && !spl.some((x) => x.id === tableFilter.splitter))) continue;
+      splittersShown++;
+    } else if (filtering && !homes.length) continue;
     const port = (h) => (h.ds ? h.ds.port : 999);
     homes.sort((a, b) => port(a) - port(b) || a.name.localeCompare(b.name, undefined, { numeric: true }));
 
@@ -380,7 +393,7 @@ function renderTable() {
     tr.append(td);
     body.append(tr);
 
-    for (const h of homes) {
+    for (const h of tableFilter.splittersOnly ? [] : homes) {
       shown.push(h);
       const row = el("tr", "rt-home" + (h.id === selectedId ? " selected" : "") + (phasePast(h) ? " past" : "") + (tableTicked.has(h.id) ? " ticked" : ""));
       row.dataset.id = h.id;
@@ -425,7 +438,7 @@ function renderTable() {
   table.append(body);
   const scroll = routeTable.scrollTop;
   routeTable.replaceChildren(tableTools(shown), table);
-  if (filtering && !shown.length) routeTable.append(el("p", "hint rt-empty", "No homes match. Change the filters above."));
+  if (tableFilter.splittersOnly ? !splittersShown : filtering && !shown.length) routeTable.append(el("p", "hint rt-empty", tableFilter.splittersOnly ? "No splitters match. Change the filters above." : "No homes match. Change the filters above."));
   routeTable.scrollTop = scroll;
 }
 
