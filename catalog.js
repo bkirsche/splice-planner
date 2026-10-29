@@ -182,6 +182,14 @@ function templateById(id) {
 }
 
 // A card-based item (shelf, panel, terminal) or a closure from a template.
+// Make a splice case another model in place: same id and splices.
+function applyCaseTemplate(eq, t) {
+  if (eq.name === eq.model) eq.name = t.model;
+  Object.assign(eq, { model: t.model, template: t.id, trays: t.trays, slots: t.slots });
+  if (t.max) eq.max = t.max;
+  else delete eq.max;
+}
+
 function fromTemplate(t, name) {
   if (t.kind === "closure") {
     return { id: makeId(), type: "closure", name, model: t.model, template: t.id, trays: t.trays, slots: t.slots, ...(t.max ? { max: t.max } : {}) };

@@ -293,7 +293,7 @@ function renderFeatures() {
 function cellEditor(col, item, cell) {
   const v = item ? col.get(item) : null;
   const ed = col.edit === "select"
-    ? selectEl(col.options(item).map((o) => ({ value: String(o.value), label: o.label })), String(v ?? ""))
+    ? selectEl(col.options(item).map((o) => ({ value: String(o.value), label: o.label, group: o.group })), String(v ?? ""))
     : inputEl(col.edit === "number" ? "number" : "text", v ?? "", col.edit === "number" ? { min: 0 } : {});
   ed.classList.add("fe-cell");
   if (cell) ed.dataset.cell = cell;
