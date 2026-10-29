@@ -1724,6 +1724,11 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
 .rt-tick input { width: 20px; height: 20px; }
 .rt-table tr.ticked td { background: color-mix(in srgb, var(--accent) 9%, var(--card)); }
 .rt-empty { padding: 12px; }
+.rt-spls { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; }
+.rt-spl { display: inline-flex; align-items: center; gap: 8px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); }
+.rt-spl.ticked { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--card)); }
+.rt-spl input[type=checkbox] { width: 20px; height: 20px; }
+.rt-spl-name { font-weight: 600; }
 
 /* --- Grid layout (grid.js): a location in each cell, + on every side --- */
 .grid-board { position: relative; }
