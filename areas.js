@@ -406,7 +406,8 @@ function renderAreaBar() {
   const on = areaOn();
   areaBar.hidden = !on;
   document.querySelector(".route-hint").hidden = on;
-  document.querySelector(".layout-label").hidden = on;
+  // The Layout menu stays put: picking one leaves the areas for the full
+  // route in that layout (fold.js).
   if (!on) return;
   areaBar.innerHTML = "";
   const crumbs = el("nav", "area-crumbs");
