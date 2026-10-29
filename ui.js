@@ -314,17 +314,58 @@ function withUndo(text, act, reopen = null) {
   return result;
 }
 
+// Every change that offers Undo is kept (the last 30), so Ctrl+Z can
+// take them back one at a time, newest first, after the bar has gone.
+const undoStack = [];
+
 function offerUndo(text, before, reopen = null) {
-  showNote(text, () => {
-    plan = migratePlan(JSON.parse(before));
-    savePlan();
-    closePanels();
-    closeMenu();
-    selectedId = null;
-    if (typeof show === "function") show("route");
-    if (reopen) reopen();
-    showNote("Undone.");
-  });
+  const step = { text, before, reopen };
+  undoStack.push(step);
+  if (undoStack.length > 30) undoStack.shift();
+  showNote(text, () => undoStep(step));
+}
+
+// Put the plan back to before `step` (and drop it and anything after).
+function undoStep(step) {
+  const i = undoStack.indexOf(step);
+  if (i >= 0) undoStack.length = i;
+  plan = migratePlan(JSON.parse(step.before));
+  savePlan();
+  closePanels();
+  closeMenu();
+  selectedId = null;
+  if (typeof show === "function") show("route");
+  if (step.reopen) step.reopen();
+  showNote(`Undone: ${step.text}`);
+}
+
+// Ctrl+Z (Cmd+Z on a Mac) undoes the last change. In a box you're typing
+// in it undoes the typing instead, as it always does.
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== "z" || typingIn(e.target)) return;
+  if (!undoStack.length) return showNote("Nothing to undo.");
+  e.preventDefault();
+  undoStep(undoStack[undoStack.length - 1]);
+});
+
+// Enter in a grid of boxes moves down to the same box on the next row
+// (Shift+Enter: the row above), like a spreadsheet. Boxes carry
+// data-cell="<row id>|<column>". Gives the box to go to, if any.
+function cellBelow(box, up) {
+  const tr = box.closest("tr");
+  const col = (box.dataset.cell || "").split("|")[1];
+  for (let r = up ? tr.previousElementSibling : tr.nextElementSibling; r; r = up ? r.previousElementSibling : r.nextElementSibling) {
+    const next = col && r.querySelector(`[data-cell$="|${CSS.escape(col)}"]`);
+    if (next) return next;
+  }
+  return null;
+}
+
+// Focus a box and select what's in it, so typing replaces it.
+function focusCell(box) {
+  if (!box) return;
+  box.focus();
+  if (box.select && box.tagName === "INPUT") box.select();
 }
 
 // --- Locks ---

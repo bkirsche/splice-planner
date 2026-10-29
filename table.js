@@ -100,6 +100,7 @@ function tableSplitterSelect(h, s) {
   }
   const sel = selectEl(opts, s ? s.id : "");
   sel.className = "rt-select";
+  sel.dataset.cell = `${h.id}|splitter`;
   sel.title = "Splitter";
   sel.setAttribute("aria-label", `Splitter for ${h.name}`);
   sel.addEventListener("change", () => {
@@ -130,6 +131,7 @@ function tablePortSelect(h, s) {
   }
   const sel = selectEl(opts, h.ds && h.ds.splitterId === s.id ? h.ds.port : "");
   sel.className = "rt-select";
+  sel.dataset.cell = `${h.id}|port`;
   sel.title = "DS port";
   sel.setAttribute("aria-label", `Port for ${h.name}`);
   sel.addEventListener("change", () => {
@@ -158,6 +160,7 @@ function tableSplitterF2(L, s) {
   });
   const sel = selectEl([{ value: "", label: "No F2" }, ...(s.f2 ? [{ value: s.f2, label: f2Label(s) }] : [])], s.f2 || "");
   sel.className = "rt-select mono";
+  sel.dataset.cell = `${s.id}|f2`;
   sel.title = "F2 fiber";
   sel.setAttribute("aria-label", `F2 for ${eqLabel(s)}`);
   let filled = false;
@@ -473,7 +476,18 @@ function tableHomeRow(L, h, terms, flat) {
   return row;
 }
 
+// Enter on a dropdown in the table goes down to the same one on the next
+// row (Shift+Enter: up), like the feature editor.
+routeTable.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || e.isComposing || e.ctrlKey || e.metaKey || e.altKey || !e.target.dataset.cell) return;
+  e.preventDefault();
+  const rows = [...routeTable.querySelectorAll("[data-cell]")].filter((x) => x.dataset.cell.split("|")[1] === e.target.dataset.cell.split("|")[1]);
+  focusCell(rows[rows.indexOf(e.target) + (e.shiftKey ? -1 : 1)]);
+});
+
 function renderTable() {
+  // Keep the dropdown being worked in across the redraw.
+  const active = document.activeElement && routeTable.contains(document.activeElement) ? document.activeElement.dataset.cell : null;
   const homesAll = plan.points.filter((p) => p.type === "nid");
   const terms = homesAll.some((h) => homeTerminalPort(h));
   const sorted = tableFilter.sort !== "route";
@@ -547,6 +561,10 @@ function renderTable() {
   routeTable.replaceChildren(tableTools(shown), table);
   if (tableFilter.splittersOnly ? !splittersShown : filtering && !shown.length) routeTable.append(el("p", "hint rt-empty", tableFilter.splittersOnly ? "No splitters match. Change the filters above." : "No homes match. Change the filters above."));
   routeTable.scrollTop = scroll;
+  if (active) {
+    const again = routeTable.querySelector(`[data-cell="${CSS.escape(active)}"]`);
+    if (again) again.focus({ preventScroll: true });
+  }
 }
 
 // Scroll a location's or home's row into view and flash it.
