@@ -1,12 +1,14 @@
 // The Table layout: every location in route order, each with the homes
 // it feeds as rows (lot, splitter, port, F2, DS, drop). Suits a big job
-// read like a spreadsheet. Each home's splitter and port can be picked
-// right in its row, and ticked homes filled onto a splitter in order.
+// read like a spreadsheet. Each home's splitter and port, and each
+// splitter's F2, can be picked right in the table; ticked homes fill a
+// splitter in order, and ticked splitters get F2s numbered in order.
 // Tap a location or a home's name for its menu.
 
 const routeTable = document.getElementById("route-table");
 const tableFilter = { loc: "", splitter: "", issues: false };
 const tableTicked = new Set(); // ticked home ids
+const tableTickedSplitters = new Set(); // ticked splitter ids
 
 // How deep a location sits on the route, for the indent.
 function routeDepth(id) {
@@ -92,6 +94,100 @@ function tablePortSelect(h, s) {
   return sel;
 }
 
+// A splitter on its location's row: tick box, name, and its F2 with the
+// lock. The F2 list is only worked out when it's opened, so a big table
+// stays quick.
+function tableSplitterF2(L, s) {
+  const wrap = el("span", "rt-spl" + (tableTickedSplitters.has(s.id) ? " ticked" : ""));
+  const tick = inputEl("checkbox", "", { "aria-label": `Tick ${eqLabel(s)}` });
+  tick.checked = tableTickedSplitters.has(s.id);
+  tick.addEventListener("change", () => {
+    if (tick.checked) tableTickedSplitters.add(s.id);
+    else tableTickedSplitters.delete(s.id);
+    renderTable();
+  });
+  const sel = selectEl([{ value: "", label: "No F2" }, ...(s.f2 ? [{ value: s.f2, label: f2Text(s.f2) }] : [])], s.f2 || "");
+  sel.className = "rt-select mono";
+  sel.title = "F2 fiber";
+  sel.setAttribute("aria-label", `F2 for ${eqLabel(s)}`);
+  let filled = false;
+  const fillOptions = () => {
+    if (filled) return;
+    filled = true;
+    const c = feederAt(L.id, s);
+    const opts = [{ value: "", label: "No F2" }];
+    for (let n = 1; n <= (c ? c.fibers : 432); n++) {
+      const used = n !== s.f2 && f2Problem(L, s, n);
+      opts.push({ value: n, label: f2Text(n) + (used ? " (in use)" : ""), disabled: !!used });
+    }
+    sel.replaceChildren(...selectEl(opts).childNodes);
+    sel.value = String(s.f2 || "");
+  };
+  sel.addEventListener("pointerdown", fillOptions);
+  sel.addEventListener("focus", fillOptions);
+  sel.addEventListener("change", () => withUndo(`${eqLabel(s)} at ${L.name} is now ${sel.value ? f2Text(Number(sel.value)) : "without an F2"}, set by hand.`, () => {
+    s.f2 = sel.value ? Number(sel.value) : null;
+    s.f2Manual = true;
+  }));
+  const lock = lockEl(!s.f2Manual, (auto) => withUndo(auto ? `${eqLabel(s)} F2 is back on automatic.` : `${eqLabel(s)} F2 is set by hand now.`, () => {
+    s.f2Manual = !auto;
+    // Locked back to automatic: the app splices it from now on.
+    if (auto) delete s.handOnly;
+  }), "the F2 count");
+  wrap.append(tick, el("span", "rt-spl-name", `${eqLabel(s)} ${s.ratio}`), lock, sel,
+    el("span", "rt-sub", `${usedPorts(s).size}/${splitterPorts(s)} ports used`));
+  return wrap;
+}
+
+// Tools for the ticked splitters: number their F2s in order, or hand
+// them back to automatic.
+function tableSplitterTools() {
+  const ticked = allSplitters().filter(({ s }) => tableTickedSplitters.has(s.id));
+  if (!ticked.length) return null;
+  const bar = el("div", "rt-tools rt-fill");
+  const from = inputEl("number", 1, { min: 1, class: "rt-port", "aria-label": "First F2 fiber" });
+  const msg = el("span", "rt-msg");
+  const number = () => {
+    const start = Number(from.value);
+    if (!Number.isInteger(start) || start < 1) return (msg.textContent = "Enter the first F2 fiber.");
+    const before = JSON.stringify(plan);
+    // Clear them first so they don't block each other's fibers.
+    for (const { s } of ticked) s.f2 = null;
+    let n = start;
+    const out = [];
+    for (const { s, loc } of ticked) {
+      const got = nextFreeF2(loc, s, n);
+      if (got === null) {
+        plan = migratePlan(JSON.parse(before));
+        return (msg.textContent = `No free feeder fiber from F2 ${n} for ${eqLabel(s)} at ${loc.name}. Start lower or tick fewer splitters.`);
+      }
+      s.f2 = got;
+      out.push([s, got]);
+      n = got + 1;
+    }
+    for (const [s] of out) s.f2Manual = true;
+    savePlan();
+    renderRoute();
+    offerUndo(`Numbered F2 on ${plural(out.length, "splitter")}: ${f2Text(out[0][1])} to ${f2Text(out.at(-1)[1])}.`, before);
+    tableTickedSplitters.clear();
+    renderTable();
+  };
+  const auto = () => {
+    withUndo(`Handed ${plural(ticked.length, "splitter")} back to automatic F2.`, () => {
+      for (const { s } of ticked) {
+        s.f2Manual = false;
+        delete s.handOnly;
+      }
+    });
+    tableTickedSplitters.clear();
+    renderTable();
+  };
+  bar.append(el("span", "rt-tools-label strong", `${plural(ticked.length, "splitter")} ticked:`), document.createTextNode("number F2 from fiber"), from,
+    btnEl("Number in order", number, "btn"), btnEl("Back to automatic", auto, "btn ghost"),
+    btnEl("Untick all", () => (tableTickedSplitters.clear(), renderTable()), "btn ghost"), msg);
+  return bar;
+}
+
 // Filters, and the tools for the ticked homes.
 function tableTools(shownHomes) {
   const bar = el("div", "rt-tools");
@@ -110,8 +206,12 @@ function tableTools(shownHomes) {
   issues.append(box, document.createTextNode("Only homes that need a look"));
   bar.append(el("span", "rt-tools-label", "Show"), lSel, sSel, issues);
 
+  const wrap = el("div");
+  wrap.append(bar);
+  const sBar = tableSplitterTools();
+  if (sBar) wrap.append(sBar);
   const ticked = shownHomes.filter((h) => tableTicked.has(h.id));
-  if (!ticked.length) return bar;
+  if (!ticked.length) return wrap;
   const fillBar = el("div", "rt-tools rt-fill");
   const target = selectEl(allSplitters().filter(({ s }) => !isCascade(s)).map(({ s, loc }) => ({ value: s.id, label: `${eqLabel(s)} at ${loc.name}` })),
     tableFilter.splitter || (homeSplitter(ticked[0]) || {}).id);
@@ -160,8 +260,7 @@ function tableTools(shownHomes) {
   fillBar.append(el("span", "rt-tools-label strong", `${plural(ticked.length, "home")} ticked:`), document.createTextNode("put on"), target,
     document.createTextNode("from port"), from, btnEl("Fill in order", fill, "btn"), btnEl("Back to automatic", auto, "btn ghost"),
     btnEl("Untick all", () => (tableTicked.clear(), renderTable()), "btn ghost"), msg);
-  const wrap = el("div");
-  wrap.append(bar, fillBar);
+  wrap.append(fillBar);
   return wrap;
 }
 
@@ -201,9 +300,14 @@ function renderTable() {
     const c = incomingCable(L.id);
     if (c) bits.push(`${c.name} · ${c.fibers}F${cableKind(c) !== "cable" ? ` ${cableKindText(c).toLowerCase()}` : ""} from ${point(c.from).name}`);
     else if (L.id !== plan.points[0].id) bits.push(`from ${point(incomingPath(L.id).from).name}, no cable`);
-    for (const s of splittersAt(L)) bits.push(`${eqLabel(s)} ${s.ratio} · ${f2Label(s)} · ${usedPorts(s).size}/${splitterPorts(s)} ports used`);
     if (homes.length) bits.push(plural(homes.length, "home"));
     td.append(name, el("span", "rt-sub", bits.join(" · ")));
+    const spl = splittersAt(L);
+    if (spl.length) {
+      const line = el("div", "rt-spls");
+      for (const s of spl) line.append(tableSplitterF2(L, s));
+      td.append(line);
+    }
     tr.append(td);
     body.append(tr);
 
@@ -248,6 +352,7 @@ function renderTable() {
     }
   }
   for (const id of [...tableTicked]) if (!point(id)) tableTicked.delete(id);
+  for (const id of [...tableTickedSplitters]) if (!splitterById(id)) tableTickedSplitters.delete(id);
   table.append(body);
   const scroll = routeTable.scrollTop;
   routeTable.replaceChildren(tableTools(shown), table);
