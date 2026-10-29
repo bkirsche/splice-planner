@@ -42,8 +42,10 @@ function feedingLocation(locId) {
 
 // The splitter feeding a home: the one its DS is on, else the first
 // splitter at the nearest upstream location that has one. A splitter
-// placed to be spliced by hand (handOnly) only takes homes put on it by
-// hand; the app looks further up for one that feeds them by itself.
+// not spliced to a feeder yet (handOnly) still takes the homes at its
+// own location when it's the only kind there: they wait on it (with no
+// F2 until it's spliced) instead of borrowing ports further up. Cascade
+// splitters feed other splitters, not homes.
 function homeSplitter(home) {
   // Put on a splitter off its route on purpose (the Table's override).
   if (home.ds && home.ds.offRoute) {
@@ -54,7 +56,8 @@ function homeSplitter(home) {
   let loc = path && feedingLocation(path.from);
   while (loc) {
     const list = splittersAt(loc);
-    const hit = (home.ds && list.find((s) => s.id === home.ds.splitterId)) || list.find((s) => !s.handOnly);
+    const hit = (home.ds && list.find((s) => s.id === home.ds.splitterId)) || list.find((s) => !s.handOnly) ||
+      list.find((s) => !isCascade(s));
     if (hit) return hit;
     const up = incomingPath(loc.id);
     loc = up && feedingLocation(up.from);
@@ -69,7 +72,8 @@ function splitterById(id) {
 
 // The splitters a home can be put on along its route: those at each
 // location up the route, as far as the first one that feeds homes by
-// itself. Any other splitter is an override (ds.offRoute).
+// itself, or one waiting to be spliced. Any other splitter is an
+// override (ds.offRoute).
 function routeSplitters(home) {
   const out = [];
   const path = incomingPath(home.id);
@@ -77,7 +81,7 @@ function routeSplitters(home) {
   while (loc) {
     const list = splittersAt(loc);
     out.push(...list);
-    if (list.some((s) => !s.handOnly)) break;
+    if (list.some((s) => !s.handOnly || !isCascade(s))) break;
     const up = incomingPath(loc.id);
     loc = up && feedingLocation(up.from);
   }
@@ -315,7 +319,8 @@ function autoCounts() {
     const sp0 = homeSplitter(h);
     const loc = sp0 && equipmentLocation(sp0.id);
     if (!loc) continue;
-    for (const sp of splittersAt(loc).filter((x) => !x.handOnly)) {
+    const ready = splittersAt(loc).filter((x) => !x.handOnly);
+    for (const sp of ready.length ? ready : [sp0]) {
       const port = nextFreePort(sp, h.id);
       if (port !== null) {
         h.ds = { splitterId: sp.id, port };
@@ -485,7 +490,7 @@ function openCounts(id) {
         return;
       }
       box.append(el("div", "f2-big", [f2Label(s), homeDs(home)].filter(Boolean).join(" · ")),
-        el("div", "", `From ${eqLabel(s)} at ${loc.name}` + (s.f2 && f2Colors(s) ? ` · ${f2Colors(s)}` : "")));
+        el("div", "", `From ${eqLabel(s)} at ${(equipmentLocation(s.id) || loc).name}` + (s.f2 && f2Colors(s) ? ` · ${f2Colors(s)}` : "")));
       body.append(box, el("p", "hint", "Locked counts are filled in by the app. Tap the lock to pick them yourself."));
       const changed = () => {
         savePlan();
@@ -510,8 +515,21 @@ function openCounts(id) {
 
 // --- Many homes at once ---
 
-// Homes fed by the splitters at a location, in route order.
+// Homes fed by the splitters at a location, in route order: the ones
+// downstream with no splitter of their own between, plus any other home
+// counted on one of them (put there off its route, say), so every home
+// on a splitter's ports shows in its Home counts.
 function homesFedBy(p) {
+  const order = homesFedDown(p);
+  for (const h of routeOrder()) {
+    if (h.type !== "nid" || order.includes(h)) continue;
+    const s = homeSplitter(h);
+    if (s && equipmentLocation(s.id) === p) order.push(h);
+  }
+  return order;
+}
+
+function homesFedDown(p) {
   const order = [];
   const walk = (id) => {
     for (const path of plan.paths.filter((x) => x.from === id)) {
@@ -649,6 +667,9 @@ function openHomeCounts(locId, eqId) {
         handle.dataset.home = h.id;
         handle.title = "Drag onto a port, or tap and then tap a port";
         handle.append(el("span", "grip", "⋮⋮"), el("span", "hc-name", h.name));
+        // A home from further along the route, or put here off its route.
+        const at = homeLocation(h);
+        if (at && at !== L && feedingLocation(at.id) !== L) handle.append(el("span", "hc-lot", `at ${at.name}`));
         if (h.lot && hasAddress(h)) handle.append(el("span", "hc-lot mono", `Lot ${h.lot}`));
         const tp = homeTerminalPort(h);
         if (tp) handle.append(el("span", "hc-lot", tp.text));
@@ -774,7 +795,7 @@ function openHomeCounts(locId, eqId) {
       if (device.type === "splitter") {
         const path = incomingPath(h.id);
         const loc = path && feedingLocation(path.from);
-        if (!loc || !splittersAt(loc).includes(device)) {
+        if ((!loc || !splittersAt(loc).includes(device)) && !(h.ds && h.ds.offRoute)) {
           say(`${device.name} doesn't feed ${h.name}.`, true);
           return render();
         }
