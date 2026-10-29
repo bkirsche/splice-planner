@@ -294,6 +294,20 @@ function checkPlan() {
               },
             },
           });
+        } else if (p.ds.offRoute) {
+          warn(p.id, `${p.name} is on ${eqName(s, sLoc)}, which isn't on its route. Fine if it's on purpose.`, "ds-off-route", {
+            equipment: s.id,
+            fix: {
+              text: `Hand ${p.name} back to automatic counts on a splitter along its route`,
+              run: () => {
+                delete p.ds;
+                p.dsManual = false;
+              },
+            },
+          });
+        }
+        if (!s || p.ds.splitterId !== s.id) {
+          // Reported as ds-stale above.
         } else if (p.ds.port > splitterPorts(s)) {
           problem(p.id, `${p.name} is on DS ${p.ds.port}, but ${eqName(s, sLoc)} only has ${splitterPorts(s)} ports.`, "ds-past",
             { equipment: s.id, port: p.ds.port, fix: freePortFix(s, [p]), go: full });
@@ -506,6 +520,7 @@ const CHECK_HELP = {
   "cable-bigger": "Fine if it's on purpose, e.g. room to grow. Otherwise make it smaller from the path.",
   "home-no-drop": "Lay a drop cable on the path to the home.",
   "home-no-splitter": "No splitter upstream has a free port. Add a splitter at a location that feeds this home.",
+  "ds-off-route": "Pick a splitter along its route in the Table layout, or leave it if it's on purpose.",
   "ds-past": "Every port on the splitter is taken. Move a home to another splitter or use a bigger one.",
   "ds-shared": "Every port on the splitter is taken. Move a home to another splitter or use a bigger one.",
   "home-twice": "Remove one, or fix the address if they're two different homes.",
@@ -550,6 +565,7 @@ const CHECK_KINDS = {
   "home-no-splitter": "homes with no splitter",
   "home-no-f2": "homes with no F2 count",
   "ds-stale": "DS counts on a splitter that doesn't feed the home",
+  "ds-off-route": "homes on a splitter off their route",
   "ds-past": "DS ports past the end of the splitter",
   "ds-shared": "DS ports shared by two homes",
   "home-twice": "homes on the route twice",
