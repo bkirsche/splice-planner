@@ -167,7 +167,8 @@ function endpointGroups(locId) {
   const left = [];
   const right = [];
   const fiberGroup = (c, where) => {
-    const g = { id: `cable:${c.id}:${where}`, title: `${c.name} · ${c.fibers}F ${where}`, items: [] };
+    const g = { id: `cable:${c.id}:${where}`, title: `${c.name} · ${c.fibers}F ${where}`, items: [],
+      rank: where === "in" ? BLOCK_CABLE : cableBlockRank(c), fibers: c.fibers, name: c.name };
     for (const f of colorCode(c.fibers)) {
       g.items.push({ key: `fiber:${c.id}:${f.number}`, label: `#${f.number}`, sub: fiberText(c, f.number).replace(/^#\d+ /, ""),
         color: f.fiberColor, tube: tubeCount(c.fibers) > 1 ? f.tubeColor : null, tubeNo: f.tube });
@@ -176,24 +177,25 @@ function endpointGroups(locId) {
   };
   for (const eq of L.equipment || []) {
     if (eq.type === "splitter") {
-      const outs = { id: `split:${eq.id}:out`, title: `${eqLabel(eq)} outputs`, items: [] };
+      const outs = { id: `split:${eq.id}:out`, title: `${eqLabel(eq)} outputs`, items: [], rank: BLOCK_TAIL, name: eqLabel(eq) };
       for (let n = 1; n <= splitterPorts(eq); n++) outs.items.push({ key: `split:${eq.id}:${n}`, label: `Out ${n}` });
       left.push(outs);
-      right.push({ id: `split:${eq.id}:in`, title: `${eqLabel(eq)}`, items: [{ key: `split:${eq.id}:in`, label: "Input" }] });
+      right.push({ id: `split:${eq.id}:in`, title: `${eqLabel(eq)}`, items: [{ key: `split:${eq.id}:in`, label: "Input" }], rank: BLOCK_TAIL, name: eqLabel(eq) });
     }
     if (hasCards(eq)) {
-      const g = { id: `eq:${eq.id}`, title: eqLabel(eq), items: [] };
+      const g = { id: `eq:${eq.id}`, title: eqLabel(eq), items: [], rank: BLOCK_TAIL, name: eqLabel(eq) };
       for (const card of eq.cards) for (const port of card.ports) g.items.push({ key: `port:${eq.id}:${port.id}`, label: port.name, sub: card.name });
       left.push(g);
       // An OLT only sends; panels and terminals pass light through.
       if (eq.type !== "shelf") right.push({ ...g, items: g.items.map((x) => ({ ...x })) });
     }
   }
-  // The incoming cable goes after the splitters and ports: it can be long.
   const arriving = incomingCable(locId);
   if (arriving) left.push(fiberGroup(cableStart(arriving), "in"));
   for (const d of childCables(locId).filter((x) => !x.through)) right.push(fiberGroup(d, "out"));
-  return { left, right };
+  // The app's own order (sortBlocks): cables at the top, then tails and
+  // splitters, then drops.
+  return { left: sortBlocks(left), right: sortBlocks(right) };
 }
 
 // --- Block order ---
@@ -210,7 +212,9 @@ function orderedGroups(groups, ids) {
 
 // Each block moves to the average row of what it connects to on the
 // other side (barycenter), a few sweeps back and forth; the try with
-// the fewest crossing lines wins. Fibers keep their color order.
+// the fewest crossing lines wins. Fibers keep their color order, and a
+// block only moves within its own group (cables, tails, drops), so the
+// big cables stay at the top.
 function arrangeBlocks(left, right, conns) {
   const rows = (groups) => {
     const pos = new Map();
@@ -235,7 +239,7 @@ function arrangeBlocks(left, right, conns) {
       const ys = conns.filter((c) => keys.has(c[mine]) && pos.has(c[theirs])).map((c) => pos.get(c[theirs]));
       return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : Infinity;
     };
-    return groups.map((g, i) => [bary(g), i, g]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+    return groups.map((g, i) => [bary(g), i, g]).sort((a, b) => a[2].rank - b[2].rank || a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
   };
   let best = { l: left, r: right, n: crossings(left, right) };
   let l = left, r = right;
@@ -371,6 +375,8 @@ function resetConnections(locId) {
     delete d.pins;
     delete d.handOnly;
   }
+  // The blocks go back to the app's own order too.
+  delete point(locId).blockOrder;
   savePlan();
 }
 
@@ -680,7 +686,7 @@ function openConnections(locId) {
       }
       tools.append(levels);
       tools.append(btnEl("Fill gaps from free fibers", fillGapsNow, "btn ghost"), btnEl("Reset to automatic", () => {
-        withUndo("Back to the app's own choices for the cables leaving here. Patches and F2 counts stayed.", () => resetConnections(locId));
+        withUndo("Back to the app's own choices and block order for the cables leaving here. Patches and F2 counts stayed.", () => resetConnections(locId));
         render();
       }, "btn ghost"));
       if (conns.length) {

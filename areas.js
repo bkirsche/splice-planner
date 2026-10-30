@@ -442,7 +442,7 @@ function renderAreaBar() {
   } else {
     const w = areaWalk(a);
     const streets = byStreet(w.homes).map((s) => s[0]);
-    note.textContent = `${a.name} area: ${plural(w.homes.length, "home")}${streets.length ? " on " + streets.slice(0, 4).join(", ") + (streets.length > 4 ? "…" : "") : ""}. Tap a card for its options.`;
+    note.textContent = `${a.name} area: ${plural(w.homes.length, "home")}${streets.length ? " on " + streets.slice(0, 4).join(", ") + (streets.length > 4 ? ` and ${streets.length - 4} more` : "") : ""}. Tap a card for its options.`;
   }
   const legend = el("span", "area-legend");
   legend.innerHTML = '<i class="fd"></i>Cable (thicker = more fibers) <i class="tl"></i>Tails only';

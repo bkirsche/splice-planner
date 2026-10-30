@@ -133,7 +133,7 @@ function checkPlan() {
         });
         if (open.length) {
           warn(p.id, `${cap(cabName(d))} has ${open.length} fiber${open.length === 1 ? "" : "s"} not spliced yet at ${p.name} ` +
-            `(${open.slice(0, 4).map((f) => `#${f.out} ${model.describe(f.item)}`).join(", ")}${open.length > 4 ? ", …" : ""}).`,
+            `(${open.slice(0, 4).map((f) => `#${f.out} ${model.describe(f.item)}`).join(", ")}${open.length > 4 ? ` and ${open.length - 4} more` : ""}).`,
           "open-fibers", { cable: d.id, fibers: open.map((f) => f.out), fix: spliceOpenFix(model, p, d, open),
             go: caseGo(p, `Splice ${cabName(d)} #${open.slice(0, 6).map((f) => f.out).join(", #")}${open.length > 6 ? " and the rest" : ""} to free fibers here.`) });
         }
