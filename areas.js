@@ -160,6 +160,14 @@ function areaHomesEl(p, drops) {
       open();
     }, "area-street");
     row.dataset.street = street;
+    row.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isGuest() || !unassignable(list).length) return;
+      openPopup(streetLine(street, list), [
+        { icon: "homes", label: unassignLabel(unassignable(list).length), run: () => unassignHomes(list) },
+      ], e, `Homes fed from ${p.name}`);
+    });
     if (areaFlash && areaFlash.has("street:" + street)) row.classList.add("hit");
     box.append(row);
   }

@@ -1012,6 +1012,12 @@ function openMenu(id, e) {
   }
   if (!isStart) {
     items.push({ icon: "move", label: "Move (feed from somewhere else)", sep: true, run: () => openMove(id) });
+    if (p.type === "nid") {
+      if (unassignable([p]).length) items.push({ icon: "homes", label: unassignLabel(1), run: () => unassignHomes([p]) });
+    } else {
+      const fed = homesFedFrom(id);
+      if (fed.length) items.push({ icon: "homes", label: `Unassign all homes here (${fed.length})`, run: () => unassignHomes(fed) });
+    }
     items.push({ icon: "remove", label: "Remove", danger: true, run: () => removeStop(id) });
   }
   openPopup(p.name, items, e, typeLabel(p.type) + by);
@@ -1286,6 +1292,9 @@ function renameStop(id) {
         else delete p.lot;
         finish();
       });
+      if (unassignable([p]).length) {
+        foot.prepend(btnEl(unassignLabel(1), () => unassignHomes([p]), "btn ghost"));
+      }
     });
   }
   openForm(`Rename ${p.name}`, (body, foot) => {

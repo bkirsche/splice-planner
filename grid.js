@@ -925,6 +925,7 @@ function openPickedMenu(e) {
       showNote("Drag any selected location: the others move with it. Tap Lock when you're done.");
     } },
     ...(allHomes ? [{ icon: "homes", label: "Feed them from…", run: () => openFeedPicked() }] : []),
+    ...(unassignable(homes).length ? [{ icon: "homes", label: unassignLabel(unassignable(homes).length), run: () => unassignHomes(homes, renderPicks) }] : []),
     { icon: "select", label: "Clear the selection", run: () => clearPicks() },
     { icon: "remove", label: `Remove ${what}`, danger: true, sep: true, run: () => removePicked() },
   ], e, "Selection");
