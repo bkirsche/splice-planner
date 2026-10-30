@@ -494,7 +494,8 @@ document.getElementById("unassigned-homes").addEventListener("click", (e) => {
 
 // The "Fed from" list: locations with no homes yet first, then the ones
 // that have some (greyed, with a count, still pickable), each by name,
-// B14410 before B14411. A location with a splitter shows its free DS ports.
+// B14410 before B14411. Each shows the DS ports free on the splitters that
+// would feed its homes: its own, or "at" the nearest one up the route.
 function feederOptions() {
   const homes = new Map();
   for (const p of plan.points) {
@@ -507,10 +508,10 @@ function feederOptions() {
   const used = feeders.filter((p) => homes.get(p.id));
   const option = (p, group) => {
     const n = homes.get(p.id) || 0;
-    const s = splittersAt(p)[0];
+    const feed = dsFeed(p.id);
     let label = `${p.name} (${typeLabel(p.type)})`;
     if (n) label += ` · ${n} home${n === 1 ? "" : "s"}`;
-    if (s) label += ` · ${splitterPorts(s) - usedPorts(s).size} free`;
+    if (feed) label += ` · ${feed.free} free${feed.loc === p ? "" : ` at ${feed.loc.name}`}`;
     return { value: p.id, label, group, className: n ? "has-homes" : "" };
   };
   return [
@@ -602,10 +603,10 @@ function openAssign(fromId) {
     }
 
     // Distributed split: each home gets the next free DS port on the
-    // splitter feeding that location. Blocked if there aren't enough.
+    // splitters feeding that location, filling one before the next.
+    // Blocked if there aren't enough.
     function splitterFor() {
-      const loc = from.value && feedingLocation(from.value);
-      return loc ? { loc, s: splittersAt(loc)[0] } : null;
+      return from.value ? dsFeed(from.value) : null;
     }
 
     function refresh() {
@@ -618,10 +619,11 @@ function openAssign(fromId) {
       formError.hidden = true;
       let blocked = false;
       if (hit) {
-        const free = splitterPorts(hit.s) - usedPorts(hit.s).size;
-        dsLabel.textContent = `Distributed split: give each home a DS port on ${hit.s.name} at ${hit.loc.name} (${free} free)`;
+        const free = hit.free;
+        const on = hit.list.length === 1 ? eqLabel(hit.list[0]) : `the ${hit.list.length} splitters`;
+        dsLabel.textContent = `Distributed split: give each home a DS port on ${on} at ${hit.loc.name} (${free} free)`;
         if (ds.checked && n > free) {
-          formError.textContent = `Only ${free} DS ports are free on ${hit.s.name}, but ${n} homes are ticked.`;
+          formError.textContent = `Only ${free} DS ports are free on ${on} at ${hit.loc.name}, but ${n} homes are ticked.`;
           formError.hidden = false;
           blocked = true;
         }
@@ -655,8 +657,9 @@ function openAssign(fromId) {
       withUndo(`Assigned ${homes.length} home${homes.length === 1 ? "" : "s"} to ${fromName}.`, () => {
         for (const h of homes) {
           const stop = addLocation(fromId, "nid", h.name, h.lot ? { lot: h.lot } : {});
-          if (hit && !countScheme().autoDs) {
-            stop.ds = { splitterId: hit.s.id, port: nextFreePort(hit.s) };
+          const port = hit && !countScheme().autoDs && nextFreeDs(hit.list);
+          if (port) {
+            stop.ds = port;
             stop.dsManual = true;
           }
           if (fibers) {
