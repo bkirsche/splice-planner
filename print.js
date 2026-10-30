@@ -329,6 +329,8 @@ function assignmentPage(filtered) {
 // and where it left off the route shows a "See box 2" card. Tries a few
 // cut heights and keeps the one that prints largest.
 function layoutOverview(diagram, model, pageOf, room) {
+  // What each way of cutting the route measures, kept while trying them.
+  const sizes = new Map();
   let best = null;
   for (const compact of [false, true]) {
     sheet.classList.add("measuring");
@@ -339,7 +341,7 @@ function layoutOverview(diagram, model, pageOf, room) {
     const fullH = whole.scrollHeight;
     sheet.classList.remove("measuring");
     for (let k = 1; k <= 8; k++) {
-      const tryIt = overviewPanels(diagram, compact, model, pageOf, fullH / k, room);
+      const tryIt = overviewPanels(diagram, compact, model, pageOf, fullH / k, room, sizes);
       if (!best || tryIt.scale > best.scale + 0.005) best = tryIt;
     }
     if (best.scale >= MIN_MAP_SCALE) break;
@@ -348,28 +350,54 @@ function layoutOverview(diagram, model, pageOf, room) {
 }
 
 // Cuts the route into boxes no taller than `limit` (unscaled), packs them
-// into columns and scales the lot to fit. Leaves it drawn in `diagram`.
-function overviewPanels(diagram, compact, model, pageOf, limit, room) {
+// into columns and scales the lot to fit. Leaves it drawn in `diagram`,
+// except while trying sizes (`sizes` given) for cuts already measured.
+function overviewPanels(diagram, compact, model, pageOf, limit, room, sizes = null) {
   const cut = new Map();
-  let wrap;
+  let wrap = null;
+  let drawnKey = null;
+  // The boxes for the cuts so far, measured: each box's height and the
+  // heights of the branches in it, in order. The same cuts always draw
+  // the same, so `sizes` keeps them while sizes are tried.
+  const measure = () => {
+    const key = `${compact}|${[...cut.keys()].sort().join()}`;
+    if (sizes && sizes.has(key)) return sizes.get(key);
+    wrap = drawPanels(diagram, compact, model, pageOf, cut);
+    drawnKey = key;
+    const trees = [...wrap.querySelectorAll(".route-tree")].map((t) => ({
+      h: t.offsetHeight,
+      branches: [...t.querySelectorAll(".branch[data-id]")].map((b) => ({ id: b.dataset.id, h: b.offsetHeight })),
+    }));
+    const m = { key, trees };
+    if (sizes) sizes.set(key, m);
+    return m;
+  };
+  let last;
+  let lastCut;
   sheet.classList.add("measuring");
   for (let tries = 0; tries < 60; tries++) {
-    wrap = drawPanels(diagram, compact, model, pageOf, cut);
-    const tall = [...wrap.querySelectorAll(".route-tree")].find((t) => t.offsetHeight > limit);
+    last = measure();
+    lastCut = new Map(cut);
+    const tall = last.trees.find((t) => t.h > limit);
     if (!tall) break;
     // Move out the biggest branch that fits a box of its own, or else the
     // smallest one that doesn't.
     // Skip a branch that is nearly the whole box: moving it just leaves an
     // empty box behind.
     // The start and branches already in a box of their own stay put.
-    const inside = [...tall.querySelectorAll(".branch[data-id]")].filter((b) => b.offsetHeight < tall.offsetHeight * 0.8 &&
-      b.dataset.id !== plan.points[0].id && !cut.has(b.dataset.id));
+    const inside = tall.branches.filter((b) => b.h < tall.h * 0.8 && b.id !== plan.points[0].id && !cut.has(b.id));
     if (!inside.length) break;
-    const fits = inside.filter((b) => b.offsetHeight <= limit);
-    const pick = fits.length ? fits.reduce((a, b) => (b.offsetHeight > a.offsetHeight ? b : a))
-      : inside.reduce((a, b) => (b.offsetHeight < a.offsetHeight ? b : a));
-    cut.set(pick.dataset.id, 0);
+    const fits = inside.filter((b) => b.h <= limit);
+    const pick = fits.length ? fits.reduce((a, b) => (b.h > a.h ? b : a)) : inside.reduce((a, b) => (b.h < a.h ? b : a));
+    cut.set(pick.id, 0);
   }
+  // The scale these cuts print at is known once worked out.
+  const scaleKey = `scale|${last.key}`;
+  if (sizes && sizes.has(scaleKey)) {
+    sheet.classList.remove("measuring");
+    return { compact, limit, scale: sizes.get(scaleKey) };
+  }
+  if (drawnKey !== last.key) wrap = drawPanels(diagram, compact, model, pageOf, lastCut);
   // Columns, left to right: boxes stack until the next won't fit. Try a
   // few column heights and keep the one that prints largest.
   const trees = [...wrap.querySelectorAll(".route-tree")].map((t) => ({ t, w: t.offsetWidth, h: t.offsetHeight }));
@@ -400,11 +428,12 @@ function overviewPanels(diagram, compact, model, pageOf, limit, room) {
     col.append(...c.items.map((b) => b.t));
     wrap.append(col);
   }
-  for (const b of trees) drawWires(b.t);
+  for (const put of trees.map((b) => measureWires(b.t))) if (put) put();
   const scale = Math.min(1, PRINT_WIDTH_PX / wrap.scrollWidth, room / wrap.scrollHeight);
   sheet.classList.remove("measuring");
   wrap.style.zoom = scale < 1 ? String(scale) : "";
   if (compact) diagram.append(el("p", "map-note", "Each location's homes are listed on its page and in the Homes table."));
+  if (sizes) sizes.set(scaleKey, scale);
   return { compact, limit, scale };
 }
 

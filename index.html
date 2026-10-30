@@ -17,7 +17,7 @@
     // "name?v=<version>", so a normal refresh fetches the new copy instead
     // of one the browser kept. The service worker (sw.js) takes the same
     // number for its offline cache.
-    const APP_VERSION = "78";
+    const APP_VERSION = "79";
     document.write(`<link rel="stylesheet" href="styles.css?v=${APP_VERSION}">`);
   </script>
   <!-- The printouts carry the dark-text logo; load it ahead so it is there when printing. -->
@@ -268,7 +268,7 @@
   <section id="print-sheet" class="print-sheet"></section>
 
   <script>
-    for (const f of ["ui.js", "users.js", "catalog.js", "app.js", "pan.js", "fold.js", "table.js", "grid.js", "phases.js", "areas.js", "paths.js", "equipment.js", "import.js", "counts.js", "files.js", "splices.js", "connect.js", "edits.js", "check.js", "print.js", "xlsx.js", "features.js", "features-equipment.js", "field.js", "trace.js"]) {
+    for (const f of ["planindex.js", "ui.js", "users.js", "catalog.js", "app.js", "pan.js", "fold.js", "table.js", "grid.js", "phases.js", "areas.js", "paths.js", "equipment.js", "import.js", "counts.js", "files.js", "splices.js", "connect.js", "edits.js", "check.js", "print.js", "xlsx.js", "features.js", "features-equipment.js", "field.js", "trace.js"]) {
       document.write(`<script src="${f}?v=${APP_VERSION}"><\/script>`);
     }
   </script>

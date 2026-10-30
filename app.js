@@ -162,6 +162,16 @@ function colorAt(i) {
 
 // Every fiber in a cable: [{ number, tube, tubeColor, fiberColor }].
 function colorCode(fibers) {
+  // The same list again while the plan index is in use.
+  const ix = planIndex();
+  if (ix) {
+    if (!ix.colors.has(fibers)) ix.colors.set(fibers, colorCodeOf(fibers));
+    return ix.colors.get(fibers).slice();
+  }
+  return colorCodeOf(fibers);
+}
+
+function colorCodeOf(fibers) {
   const out = [];
   for (let n = 0; n < fibers; n++) {
     const tube = Math.floor(n / 12);
@@ -273,16 +283,25 @@ function disarmBack() {
   backBtn.innerHTML = backLabel;
 }
 
+// These look in the plan index while one is in use (planindex.js).
 function point(id) {
-  return plan.points.find((p) => p.id === id);
+  const ix = planIndex();
+  return ix ? ix.point.get(id) : plan.points.find((p) => p.id === id);
 }
 
 function childPaths(id) {
-  return plan.paths.filter((x) => x.from === id);
+  const ix = planIndex();
+  return ix ? (ix.pathsFrom.get(id) || []).slice() : plan.paths.filter((x) => x.from === id);
 }
 
 function incomingPath(id) {
-  return plan.paths.find((x) => x.to === id);
+  const ix = planIndex();
+  return ix ? ix.pathTo.get(id) : plan.paths.find((x) => x.to === id);
+}
+
+function cableById(id) {
+  const ix = planIndex();
+  return ix ? ix.cable.get(id) : plan.cables.find((x) => x.id === id);
 }
 
 // A path can carry several cables. Each span with `through` set names
@@ -330,38 +349,49 @@ function pathCable(path) {
 }
 
 function childCables(id) {
-  return plan.cables.filter((c) => c.from === id);
+  const ix = planIndex();
+  return ix ? (ix.cablesFrom.get(id) || []).slice() : plan.cables.filter((c) => c.from === id);
 }
 
 // The span a through span continues. Spans saved before `prev` existed
 // continue the (only) cable arriving at their start.
 function prevSpan(c) {
+  const ix = planIndex();
+  if (ix) return c.prev ? ix.cable.get(c.prev) : (ix.cablesTo.get(c.from) || [])[0];
   return c.prev ? plan.cables.find((x) => x.id === c.prev) : plan.cables.find((x) => x.to === c.from);
 }
 
 // The span continuing this one past its end, if the cable goes on.
 function nextSpan(c) {
-  return plan.cables.find((x) => x.through && x.from === c.to && prevSpan(x) === c);
+  const ix = planIndex();
+  if (!ix) return plan.cables.find((x) => x.through && x.from === c.to && prevSpan(x) === c);
+  if (!ix.next.has(c)) ix.next.set(c, (ix.cablesFrom.get(c.to) || []).find((x) => x.through && prevSpan(x) === c));
+  return ix.next.get(c);
 }
 
 // The cable feeding a location: the one ending there, or else the first
 // to arrive (one passing through with a mid-span splice).
 function incomingCable(id) {
+  const ix = planIndex();
+  if (ix && ix.incoming.has(id)) return ix.incoming.get(id);
   const arriving = [];
   const going = [];
-  for (const c of plan.cables) {
+  // Only the cables ending or starting here, in plan order, with the index.
+  const near = ix ? [...(ix.cablesTo.get(id) || []), ...(ix.cablesFrom.get(id) || []).filter((c) => c.to !== id)] : plan.cables;
+  for (const c of near) {
     // A tail laid back up the route only passes through.
     if (c.to === id && !(againstPath(c) && nextSpan(c))) arriving.push(c);
     else if (c.from === id && c.through) going.push(c);
   }
-  if (arriving.length < 2) return arriving[0];
-  return arriving.find((a) => !going.some((x) => prevSpan(x) === a)) || arriving[0];
+  const found = arriving.length < 2 ? arriving[0] : arriving.find((a) => !going.some((x) => prevSpan(x) === a)) || arriving[0];
+  if (ix) ix.incoming.set(id, found);
+  return found;
 }
 
 // The span feeding a splitter or terminal: the end of its own tail, or
 // else the cable feeding its location.
 function feederAt(locId, eq) {
-  const t = eq && eq.tail && plan.cables.find((x) => x.id === eq.tail);
+  const t = eq && eq.tail && cableById(eq.tail);
   const end = t && cableSpans(t).at(-1);
   return end && end.to === locId ? end : incomingCable(locId);
 }
@@ -688,10 +718,17 @@ function drawFans() {
   if (layoutNow() === "grid") return drawGridLines();
   // Screen sizes are zoomed; the drawing is in the route's own units.
   const z = typeof routeZoom === "function" ? routeZoom() : 1;
+  // Every size is measured first, then the lines drawn: measuring after
+  // each change would lay the page out again for every row.
+  const fans = [];
   for (const fan of document.querySelectorAll("#route-tree .fan")) {
-    const svg = fan.querySelector(".fan-lines");
     const rect = fan.getBoundingClientRect();
     if (!rect.height) continue;
+    const rows = [...fan.querySelectorAll(".fan-row")].map((row) => [row, row.querySelector(".stop").getBoundingClientRect()]);
+    fans.push({ fan, rect, rows });
+  }
+  for (const { fan, rect, rows } of fans) {
+    const svg = fan.querySelector(".fan-lines");
     const box = { top: rect.top, height: rect.height / z };
     // Start where the location's line meets this group: its middle.
     const y0 = box.height / 2;
@@ -700,9 +737,7 @@ function drawFans() {
     svg.setAttribute("height", box.height);
     svg.setAttribute("viewBox", `0 0 ${FAN_W} ${box.height}`);
     svg.innerHTML = "";
-    for (const row of fan.querySelectorAll(".fan-row")) {
-      const stop = row.querySelector(".stop");
-      const r = stop.getBoundingClientRect();
+    for (const [row, r] of rows) {
       const y = (r.top + r.height / 2 - box.top) / z;
       // The name goes on the side of the line away from the curve.
       row.classList.toggle("below", y > y0 + 4);
@@ -723,10 +758,18 @@ function drawFans() {
 const WIRE_IN = 23; // where the trunk runs: the start of the cable lines
 
 function drawWires(root, z = 1) {
+  const put = measureWires(root, z);
+  if (put) put();
+}
+
+// drawWires in two steps, so many drawings can be measured first and
+// then drawn (measuring between drawings lays the page out each time):
+// measures, and gives what puts the lines in, or null if nothing shows.
+function measureWires(root, z = 1) {
   const old = root.querySelector(":scope > svg.wires");
   if (old) old.remove();
   const base = root.getBoundingClientRect();
-  if (!base.width) return;
+  if (!base.width) return null;
   const X = (v) => Math.round(((v - base.left) / z) * 10) / 10;
   const Y = (v) => Math.round(((v - base.top) / z) * 10) / 10;
   const svg = document.createElementNS(SVG_NS, "svg");
@@ -775,7 +818,7 @@ function drawWires(root, z = 1) {
       svg.append(line);
     }
   }
-  root.prepend(svg);
+  return () => root.prepend(svg);
 }
 
 window.addEventListener("resize", () => drawFans());

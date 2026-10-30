@@ -73,19 +73,40 @@ function splitterByHand(s) {
 // picks: splitter F2 counts and fiber picks. n -> what uses it.
 function fixedInUse(cableId, exceptId) {
   const used = new Map();
-  for (const p of plan.points) {
-    for (const s of splittersAt(p)) {
-      const sc = feederAt(p.id, s);
-      if (sc && cableStart(sc).id === cableId && s.id !== exceptId && s.f2) used.set(s.f2, `feeds ${s.name} at ${p.name}`);
-    }
-    const pc = incomingCable(p.id);
-    if (!pc || cableStart(pc).id !== cableId) continue;
-    for (const d of childCables(p.id)) {
-      if (d.id === exceptId || d.through || !d.picks) continue;
+  for (const { p, s, d } of fiberUsers(cableId)) {
+    if (s) {
+      if (s.id !== exceptId && s.f2) used.set(s.f2, `feeds ${s.name} at ${p.name}`);
+    } else if (d.id !== exceptId && !d.through && d.picks) {
       for (const pr of expandPicks(d.picks)) used.set(pr.in, `is spliced to ${d.name} #${pr.out} at ${p.name}`);
     }
   }
   return used;
+}
+
+// What can take fibers of a physical cable, in plan order: the splitters
+// it feeds ({ p, s }) and the cables leaving where it arrives ({ p, d }).
+// The plan index keeps these for every cable at once.
+function fiberUsers(cableId) {
+  const ix = planIndex();
+  if (ix && ix.fiberUsers) return ix.fiberUsers.get(cableId) || [];
+  const all = new Map();
+  const add = (id, item) => {
+    if (!ix && id !== cableId) return;
+    if (!all.has(id)) all.set(id, []);
+    all.get(id).push(item);
+  };
+  for (const p of plan.points) {
+    for (const s of splittersAt(p)) {
+      const sc = feederAt(p.id, s);
+      if (sc) add(cableStart(sc).id, { p, s });
+    }
+    const pc = incomingCable(p.id);
+    if (!pc) continue;
+    const id = cableStart(pc).id;
+    for (const d of childCables(p.id)) add(id, { p, d });
+  }
+  if (ix) ix.fiberUsers = all;
+  return all.get(cableId) || [];
 }
 
 // "Orange tube, Blue-Aqua" for fibers a..b of a cable.

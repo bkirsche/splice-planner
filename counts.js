@@ -25,7 +25,8 @@ function countChip(text) {
 
 // Where an equipment item sits.
 function equipmentLocation(eqId) {
-  return plan.points.find((p) => (p.equipment || []).some((e) => e.id === eqId));
+  const ix = planIndex();
+  return ix ? ix.eqAt.get(eqId) : plan.points.find((p) => (p.equipment || []).some((e) => e.id === eqId));
 }
 
 // Nearest location at or upstream of `locId` that has a splitter.
@@ -47,6 +48,14 @@ function feedingLocation(locId) {
 // F2 until it's spliced) instead of borrowing ports further up. Cascade
 // splitters feed other splitters, not homes.
 function homeSplitter(home) {
+  // Kept in the plan index until DS counts change.
+  const ix = planIndex();
+  if (!ix) return findHomeSplitter(home);
+  if (!ix.homeSplitter.has(home)) ix.homeSplitter.set(home, findHomeSplitter(home));
+  return ix.homeSplitter.get(home);
+}
+
+function findHomeSplitter(home) {
   // Put on a splitter off its route on purpose (the Table's override).
   if (home.ds && home.ds.offRoute) {
     const s = splitterById(home.ds.splitterId);
@@ -181,7 +190,8 @@ function f2Colors(eq) {
 // Ports on a splitter already taken: port -> home.
 function usedPorts(eq, exceptHomeId) {
   const used = new Map();
-  for (const h of plan.points) {
+  const ix = planIndex();
+  for (const h of ix ? indexedDsHomes(ix).get(eq.id) || [] : plan.points) {
     if (h.type === "nid" && h.id !== exceptHomeId && h.ds && h.ds.splitterId === eq.id) used.set(h.ds.port, h);
   }
   return used;
@@ -197,13 +207,30 @@ function shownUsedPorts(eq) {
 // not homes: its outputs are patched or spliced onward and no home is on
 // its ports.
 function isCascade(eq) {
-  const out = `split:${eq.id}:`;
-  const onward = plan.xconnects.some((x) => [x.a, x.b].some((e) => e && e.startsWith(out) && e !== `${out}in`)) ||
-    plan.cables.some((c) => Object.values(c.pins || {}).some((it) => it.startsWith(`port:${eq.id}:`)));
+  const ix = planIndex();
+  if (ix && !ix.onward.has(eq.id)) ix.onward.set(eq.id, cascadeOnward(eq));
+  const onward = ix ? ix.onward.get(eq.id) : cascadeOnward(eq);
+  if (ix) return onward && !indexedDsHomes(ix).has(eq.id);
   return onward && !plan.points.some((h) => h.type === "nid" && h.ds && h.ds.splitterId === eq.id);
 }
 
+// The splitter's outputs are patched or spliced onward.
+function cascadeOnward(eq) {
+  const out = `split:${eq.id}:`;
+  return plan.xconnects.some((x) => [x.a, x.b].some((e) => e && e.startsWith(out) && e !== `${out}in`)) ||
+    plan.cables.some((c) => Object.values(c.pins || {}).some((it) => it.startsWith(`port:${eq.id}:`)));
+}
+
 function nextFreePort(eq, exceptHomeId) {
+  // Kept in the plan index until DS counts change.
+  const ix = planIndex();
+  if (!ix) return findFreePort(eq, exceptHomeId);
+  const key = `${eq.id}|${exceptHomeId}`;
+  if (!ix.freePort.has(key)) ix.freePort.set(key, findFreePort(eq, exceptHomeId));
+  return ix.freePort.get(key);
+}
+
+function findFreePort(eq, exceptHomeId) {
   const used = usedPorts(eq, exceptHomeId);
   for (let n = 1; n <= splitterPorts(eq); n++) if (!used.has(n)) return n;
   return null;
@@ -273,6 +300,13 @@ function padNum(n, width) {
 
 // Every location, start first, each branch followed to its end.
 function routeOrder() {
+  const ix = planIndex();
+  if (!ix) return findRouteOrder();
+  if (!ix.routeOrder) ix.routeOrder = findRouteOrder();
+  return ix.routeOrder.slice();
+}
+
+function findRouteOrder() {
   const out = [];
   const walk = (id) => {
     const p = point(id);
@@ -341,6 +375,7 @@ function autoCounts() {
   }
   const homes = order.filter((h) => h.type === "nid");
   for (const h of homes) if (!h.dsManual) delete h.ds;
+  planIndexDsChanged();
   if (!s.autoDs) return;
   for (const h of homes) {
     if (h.dsManual) continue;
@@ -353,6 +388,7 @@ function autoCounts() {
       const port = nextFreePort(sp, h.id);
       if (port !== null) {
         h.ds = { splitterId: sp.id, port };
+        planIndexDsChanged();
         break;
       }
     }
