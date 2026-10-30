@@ -635,7 +635,7 @@ function openConnections(locId) {
       const lines = [];
       if (closure) lines.push(`${eqLabel(closure)}: ${closure.trays} trays x ${closure.slots} splices.`);
       for (const t of through) lines.push(`${t.name} ${THROUGH_LABELS[t.through]} here (not spliced).`);
-      lines.push("Drag from the left to the right to connect, or tap one end and then the other. Drag a folded tube onto a folded tube to splice it all at once. Tap a line or × to take it apart. Drag a block by its ⋮⋮ grip to move it up or down.");
+      lines.push("Drag from the left to the right to connect, or tap one end and then the other. Drag a folded tube onto a folded tube to splice it all at once. Tap a line or × to take it apart. Press and hold a block's header (long-press on a touch screen), then drag it up or down to move it.");
       for (const l of lines) info.append(el("p", "hint", l));
       if (!incomingCable(locId) && L.id !== plan.points[0].id) {
         info.append(el("p", "hint warn", `No cable reaches ${L.name} yet. You can still look around and set things up here.`));
@@ -764,13 +764,20 @@ function openConnections(locId) {
             folds.cables.set(cableKey, !open);
             render();
           }, (e) => selectGroup(connsIn(g.items), e));
-          // The grip moves the block; only it starts a block drag.
+          // Press and hold the header (not its buttons or the fold arrow)
+          // and drag to move the block; the grip shows it and takes the
+          // arrow keys.
           if (groups.length > 1) {
             const grip = el("button", "cx-grip", "⋮⋮");
             grip.type = "button";
-            grip.title = "Drag to move this block up or down (or use the arrow keys)";
+            grip.title = "Press and drag the header to move this block up or down (or use the arrow keys here)";
             grip.setAttribute("aria-label", `Move ${g.title}`);
-            grip.addEventListener("pointerdown", (e) => startBlockDrag(e, box, side));
+            head.classList.add("cx-movable");
+            head.addEventListener("pointerdown", (e) => startBlockDrag(e, box, side));
+            // The tap that ends a drag doesn't fold the block too.
+            head.addEventListener("click", (e) => {
+              if (blockDragged) e.stopImmediatePropagation();
+            }, true);
             grip.addEventListener("keydown", (e) => {
               if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
               e.preventDefault();
@@ -1272,60 +1279,129 @@ function openConnections(locId) {
       addEventListener("pointercancel", up, true);
     }
 
-    // Drag a block by its grip to another place in the same column. A
-    // line shows where it will land; letting go saves the new order.
+    // Press and hold a block's header, then drag: the block lifts and
+    // follows the pointer as a ghost while the others slide apart to show
+    // where it will land; letting go saves the new order (one Undo note).
+    // A mouse lifts it once it moves or after a short hold; a finger needs
+    // a long-press, so a normal swipe still scrolls. Esc, or letting go
+    // outside the column, puts it back.
+    let blockDragged = false;
     function startBlockDrag(e, box, side) {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
+      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (e.target.closest("button:not(.cx-grip), input, a, .cx-chev")) return;
+      const touch = e.pointerType === "touch" || e.pointerType === "pen";
+      if (!touch) e.preventDefault();
       const col = box.parentElement;
       const scroller = side === "L" ? col : formPanel;
-      const x = e.clientX;
-      const y = e.clientY;
-      let moved = false;
-      let to = null; // the index it would land at, among the others
-      let mark = null;
+      const head = box.querySelector(".cx-head");
+      const x0 = e.clientX;
+      const y0 = e.clientY;
+      let px = x0;
+      let py = y0;
+      let lifted = false;
+      let ghost = null;
+      let grabY = 0;
+      let outside = false;
+      const home = box.nextElementSibling; // where it goes back to
       const others = () => [...col.querySelectorAll(":scope > .cx-group")].filter((b) => b !== box);
-      const clearMark = () => {
-        if (mark) mark.classList.remove("cx-drop-before", "cx-drop-after");
-        mark = null;
+      // Where a block sits without its slide-apart offset.
+      const restTop = (b) => b.getBoundingClientRect().top - (new DOMMatrix(getComputedStyle(b).transform).m42 || 0);
+      // Move the gap; the blocks it passes glide to their new places.
+      const placeAt = (before) => {
+        if (box.nextElementSibling === before) return;
+        const list = others();
+        const was = new Map(list.map((b) => [b, b.getBoundingClientRect().top]));
+        col.insertBefore(box, before);
+        for (const b of list) {
+          const dy = was.get(b) - b.getBoundingClientRect().top;
+          if (!dy) continue;
+          b.style.transition = "none";
+          b.style.transform = `translateY(${dy}px)`;
+          b.getBoundingClientRect();
+          b.style.transition = "transform 140ms ease-out";
+          b.style.transform = "";
+        }
+      };
+      const follow = () => {
+        ghost.style.top = `${py - grabY}px`;
+        const cr = col.getBoundingClientRect();
+        outside = px < cr.left - 40 || px > cr.right + 40;
+        ghost.classList.toggle("cx-ghost-off", outside);
+        if (outside) return placeAt(home);
+        placeAt(others().find((b) => py < restTop(b) + b.offsetHeight / 2) || null);
+        const pr = scroller.getBoundingClientRect();
+        if (py > pr.bottom - 50) scroller.scrollTop += 14;
+        if (py < pr.top + 50) scroller.scrollTop -= 14;
+      };
+      const lift = () => {
+        if (lifted) return;
+        lifted = true;
+        const r = head.getBoundingClientRect();
+        grabY = py - r.top;
+        ghost = head.cloneNode(true);
+        ghost.className = "cx-head cx-ghost";
+        ghost.style.width = `${r.width}px`;
+        ghost.style.left = `${r.left}px`;
+        document.body.append(ghost);
+        box.classList.add("cx-block-gap");
+        wrap.classList.add("cx-moving");
+        if (touch && navigator.vibrate) navigator.vibrate(15);
+        follow();
+      };
+      const timer = setTimeout(lift, touch ? 380 : 250);
+      // Once lifted, a finger drags the block instead of scrolling, and
+      // the long-press doesn't open the right-click menu.
+      const noScroll = (ev) => lifted && ev.cancelable && ev.preventDefault();
+      const noMenu = (ev) => {
+        if (!lifted) return;
+        ev.preventDefault();
+        ev.stopPropagation();
       };
       const move = (ev) => {
-        if (!moved && Math.hypot(ev.clientX - x, ev.clientY - y) <= 6) return;
+        px = ev.clientX;
+        py = ev.clientY;
+        if (!lifted) {
+          const far = Math.hypot(px - x0, py - y0);
+          // A finger that moves before the long-press is a scroll.
+          if (touch && far > 8) end(true);
+          else if (!touch && far > 5) lift();
+          return;
+        }
         ev.preventDefault();
-        if (!moved) {
-          moved = true;
-          box.classList.add("cx-block-dragging");
-          wrap.classList.add("cx-moving");
-        }
-        const list = others();
-        to = list.findIndex((b) => {
-          const r = b.getBoundingClientRect();
-          return ev.clientY < r.top + r.height / 2;
-        });
-        if (to < 0) to = list.length;
-        clearMark();
-        if (list.length) {
-          mark = to < list.length ? list[to] : list[list.length - 1];
-          mark.classList.add(to < list.length ? "cx-drop-before" : "cx-drop-after");
-        }
-        const pr = scroller.getBoundingClientRect();
-        if (ev.clientY > pr.bottom - 50) scroller.scrollTop += 14;
-        if (ev.clientY < pr.top + 50) scroller.scrollTop -= 14;
+        follow();
       };
-      const up = (ev) => {
+      const key = (ev) => {
+        if (ev.key !== "Escape") return;
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
+        end(true);
+      };
+      const up = () => end(false);
+      const cancelled = () => end(true);
+      function end(cancel) {
+        clearTimeout(timer);
         removeEventListener("pointermove", move, true);
         removeEventListener("pointerup", up, true);
-        removeEventListener("pointercancel", up, true);
-        clearMark();
-        box.classList.remove("cx-block-dragging");
+        removeEventListener("pointercancel", cancelled, true);
+        removeEventListener("touchmove", noScroll, { capture: true });
+        removeEventListener("keydown", key, true);
+        setTimeout(() => removeEventListener("contextmenu", noMenu, true), 600);
+        if (!lifted) return;
+        blockDragged = true;
+        setTimeout(() => (blockDragged = false), 0);
+        ghost.remove();
         wrap.classList.remove("cx-moving");
-        if (!moved || ev.type === "pointercancel" || to == null) return;
-        moveBlock(side, box.dataset.id, to);
-      };
+        const at = others().indexOf(box.nextElementSibling);
+        if (cancel || outside) return render();
+        moveBlock(side, box.dataset.id, at < 0 ? others().length : at);
+        render();
+      }
       addEventListener("pointermove", move, true);
       addEventListener("pointerup", up, true);
-      addEventListener("pointercancel", up, true);
+      addEventListener("pointercancel", cancelled, true);
+      addEventListener("touchmove", noScroll, { capture: true, passive: false });
+      addEventListener("keydown", key, true);
+      addEventListener("contextmenu", noMenu, true);
     }
 
     function spliceTubes(a, b) {
