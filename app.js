@@ -470,35 +470,6 @@ function isDrop(c) {
   return to && to.type === "nid" && !c.through;
 }
 
-// The one order the connections at a location are listed in, everywhere
-// (the splice case editor, splice sheets, drawings, checklists): the
-// bulk of the splicing at the top, so cables first, biggest first, then
-// tails (splitter and terminal tails, a splitter's input, ports), then
-// drops. Names sort naturally: Drop 204 before Drop 205.
-const BLOCK_CABLE = 0;
-const BLOCK_TAIL = 1;
-const BLOCK_DROP = 2;
-const naturalOrder = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: "base" });
-
-function cableBlockRank(c) {
-  if (cableKind(c) !== "cable") return BLOCK_TAIL;
-  return isDrop(c) ? BLOCK_DROP : BLOCK_CABLE;
-}
-
-// Blocks are { rank, fibers, name }; anything else on them rides along.
-function compareBlocks(a, b) {
-  return a.rank - b.rank || (a.rank === BLOCK_CABLE ? (b.fibers || 0) - (a.fibers || 0) : 0) || naturalOrder(a.name, b.name);
-}
-
-function sortBlocks(blocks) {
-  return blocks.slice().sort(compareBlocks);
-}
-
-// Cables in that order (tails and drops too).
-function sortCables(cables) {
-  return cables.map((c) => ({ c, rank: cableBlockRank(c), fibers: c.fibers, name: c.name })).sort(compareBlocks).map((x) => x.c);
-}
-
 // Next free "Cable n", "Drop n", "Splitter tail n" ... name.
 function nextCableName(kind, toHome) {
   const prefix = toHome && kind === "cable" ? "Drop" : CABLE_KINDS[kind];

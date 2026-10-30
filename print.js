@@ -862,7 +862,7 @@ function bigPicture(L, rows) {
   const inCable = arriving && cableStart(arriving);
   const outs = childCables(L.id).filter((c) => !c.through && !isDrop(c) && phaseShown(point(c.to)));
   const throughs = childCables(L.id).filter((c) => c.through && phaseShown(point(c.to)));
-  const drops = sortCables(childCables(L.id).filter((c) => isDrop(c) && phaseShown(point(c.to))));
+  const drops = childCables(L.id).filter((c) => isDrop(c) && phaseShown(point(c.to)));
   const splitters = splittersAt(L).filter(phaseShown);
   // At the start of the route a fiber patched to a splitter output is
   // drawn from that splitter.
@@ -897,11 +897,19 @@ function bigPicture(L, rows) {
   // A tube that takes strands is drawn opened up, one line per fiber.
   const opened = (c, t) => !!(landing.get(c.id) || new Map()).get(t) && fibersInTube(c, t) > 1;
   const cableH = (c) => 12 + tubeRooms(c).reduce((a, b) => a + b, 0);
-  // Cables out (and cables passing through) are stacked in the shared
-  // block order (sortCables): the big cables at the top, then tails,
-  // with the drops at the bottom.
-  const kindOf = new Map(throughs.map((c) => [c.id, "through"]));
-  const rightItems = sortCables([...outs, ...throughs]).map((c) => ({ c, kind: kindOf.get(c.id) || "out" }));
+  // Cables out are stacked in the order of the tubes that feed them, so
+  // the lines across the case don't cross; splitter-fed ones go last,
+  // next to the splitters and drops at the bottom.
+  const feedOrder = new Map();
+  for (const r of rows) {
+    if (r.dst.kind !== "cable") continue;
+    const src = srcOf(r);
+    const k = !src ? 2000 : src.kind === "split" ? 1000 : Math.ceil(src.n / 12);
+    feedOrder.set(r.dst.id, Math.min(k, feedOrder.get(r.dst.id) ?? Infinity));
+  }
+  const rightItems = [...outs.map((c) => ({ c, kind: "out" })), ...throughs.map((c) => ({ c, kind: "through" }))]
+    .map((it, i) => ({ ...it, order: feedOrder.get(it.c.id) ?? (it.kind === "through" ? 500 : 3000), i }))
+    .sort((a, b) => a.order - b.order || a.i - b.i);
   const dropCols = drops.length > 14 ? 2 : 1;
   const dropRows = Math.ceil(drops.length / dropCols);
   const rightH = rightItems.reduce((h, it) => h + cableH(it.c) + 44, 0) + (drops.length ? 34 + dropRows * 22 : 0);
