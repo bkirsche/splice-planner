@@ -599,7 +599,7 @@ function homesFedBy(p) {
 function homesFedDown(p) {
   const order = [];
   const walk = (id) => {
-    for (const path of plan.paths.filter((x) => x.from === id)) {
+    for (const path of childPaths(id)) {
       const m = point(path.to);
       if (!m) continue;
       if (m.type === "nid") {

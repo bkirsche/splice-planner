@@ -449,7 +449,7 @@ function drawPanels(diagram, compact, model, pageOf, cut) {
   starts.forEach((id, i) => {
     const panel = routePanel(point(id), compact, model, pageOf, cut);
     if (starts.length > 1) {
-      const from = i ? plan.paths.find((x) => x.to === id) : null;
+      const from = i ? incomingPath(id) : null;
       panel.prepend(el("div", "panel-tag", i ? `Box ${i + 1} · continued from ${point(from.from).name}` : `Box 1 · start`));
     }
     wrap.append(panel);

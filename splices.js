@@ -156,7 +156,7 @@ function buildSpliceModel() {
       return hit ? `Feeds ${eqLabel(hit.s)} at ${hit.p.name}` : "splitter";
     }
     if (kind === "dark") {
-      const d = plan.cables.find((c) => c.id === id);
+      const d = cableById(id);
       return d ? `Spare, spliced to ${d.name} #${n}` : "Spare";
     }
     const home = plan.points.find((h) => h.type === "nid" && homeItem(h) === item);

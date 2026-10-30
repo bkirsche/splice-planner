@@ -104,7 +104,7 @@ function fiberText(c, n) {
 function endpointLabel(key) {
   const [kind, id, sub] = key.split(":");
   if (kind === "fiber") {
-    const c = plan.cables.find((x) => x.id === id);
+    const c = cableById(id);
     if (!c || Number(sub) > c.fibers) return "(removed fiber)";
     return `${c.name} ${fiberText(c, Number(sub))}`;
   }
@@ -279,7 +279,7 @@ function removePicksFrom(locId, inN) {
 
 function cableOf(key) {
   const [kind, id] = key.split(":");
-  return kind === "fiber" ? plan.cables.find((c) => c.id === id) : null;
+  return kind === "fiber" ? cableById(id) : null;
 }
 
 // Clear whatever feeds a target, so it can take a new connection.
@@ -412,7 +412,7 @@ const TRAY_SIZES = [24, 36, 48, 72, 96, 144];
 function tubeGroup(key) {
   const [kind, id, sub] = key.split(":");
   if (kind !== "fiber") return null;
-  const c = plan.cables.find((x) => x.id === id);
+  const c = cableById(id);
   const f = c && colorCode(c.fibers)[Number(sub) - 1];
   return f ? `${id}:${f.tube}` : null;
 }
@@ -483,7 +483,7 @@ function trayPicture(trays, size, at = new Map(), onSlot = null, selected = null
       if (key) {
         n++;
         const [kind, id, sub] = key.split(":");
-        const c = kind === "fiber" && plan.cables.find((x) => x.id === id);
+        const c = kind === "fiber" && cableById(id);
         const f = c && colorCode(c.fibers)[Number(sub) - 1];
         if (f) {
           cell.style.background = f.fiberColor.hex;

@@ -519,7 +519,7 @@ function openPath(toId, cableId) {
         return "";
       }
       if (m.startsWith("pass:") || m.startsWith("storage:")) {
-        const arriving = plan.cables.find((x) => x.id === m.split(":")[1]);
+        const arriving = cableById(m.split(":")[1]);
         const span = c || { id: makeId(), from: from.id, to: to.id };
         // Everything this cable ran on to now belongs to the arriving cable.
         const spans = c ? cableRunFrom(c) : [span];
