@@ -220,9 +220,9 @@ function checkPlan() {
           problem(p.id, `Tray jump at ${p.name}: the tube holding ${endpointLabel(key)} is spliced across trays ${[...trays].sort((x, y) => x - y).join(", ")}. Keep a tube in one tray.`, "tray-jump", { splice: key, go: caseGo(p, `Move the splices of the tube holding ${endpointLabel(key)} into tray ${Math.min(...trays)}.`) });
         }
       }
-      if (closure && closure.max && keys.length > closure.max) {
-        problem(p.id, `${cap(eqName(closure, p))} holds at most ${closure.max} splices, but ${keys.length} are planned.`, "case-full", { equipment: closure.id,
-          go: eqGo(p, closure, null, `${cap(eqName(closure, p))} holds ${closure.max} splices but ${keys.length} are planned: add a bigger case below and move the splices to it, or splice ${keys.length - closure.max} fibers at another location.`) });
+      if (closure && closure.max && slots.size > closure.max) {
+        problem(p.id, `${cap(eqName(closure, p))} holds at most ${closure.max} splices, but ${slots.size} are planned.`, "case-full", { equipment: closure.id,
+          go: eqGo(p, closure, null, `${cap(eqName(closure, p))} holds ${closure.max} splices but ${slots.size} are planned: add a bigger case below and move the splices to it, or splice ${slots.size - closure.max} fibers at another location.`) });
       }
     }
 

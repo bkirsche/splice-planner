@@ -470,6 +470,7 @@ function openAssign(fromId) {
 
     let go;
     function render() {
+      formTitle.textContent = `Unassigned homes (${plan.unassigned.length})`;
       table.innerHTML = "";
       const shown = shownHomes();
       allText.textContent = search.value.trim() ? `All ${shown.length} shown` : "All";
@@ -545,23 +546,36 @@ function openAssign(fromId) {
     from.addEventListener("change", refresh);
     ds.addEventListener("change", refresh);
 
-    go = formButtons(foot, () => {
+    // Assign keeps the dialog open on the homes that are left, so a job
+    // can be placed in several goes. Each batch has its own Undo.
+    function assign() {
       const hit = ds.checked && splitterFor();
       const fibers = Number(drop.value);
-      for (const h of plan.unassigned.filter((x) => picked.has(x.id))) {
-        const stop = addLocation(from.value, "nid", h.name, h.lot ? { lot: h.lot } : {});
-        if (hit && !countScheme().autoDs) {
-          stop.ds = { splitterId: hit.s.id, port: nextFreePort(hit.s) };
-          stop.dsManual = true;
+      const homes = plan.unassigned.filter((x) => picked.has(x.id));
+      const fromId = from.value;
+      const fromName = plan.points.find((p) => p.id === fromId).name;
+      withUndo(`Assigned ${homes.length} home${homes.length === 1 ? "" : "s"} to ${fromName}.`, () => {
+        for (const h of homes) {
+          const stop = addLocation(fromId, "nid", h.name, h.lot ? { lot: h.lot } : {});
+          if (hit && !countScheme().autoDs) {
+            stop.ds = { splitterId: hit.s.id, port: nextFreePort(hit.s) };
+            stop.dsManual = true;
+          }
+          if (fibers) {
+            const d = { id: makeId(), name: nextCableName("cable", true), from: fromId, to: stop.id, fibers };
+            plan.cables.push(autoSplice.box.checked ? d : spliceByHand(d));
+          }
         }
-        if (fibers) {
-          const d = { id: makeId(), name: nextCableName("cable", true), from: from.value, to: stop.id, fibers };
-          plan.cables.push(autoSplice.box.checked ? d : spliceByHand(d));
-        }
-      }
-      plan.unassigned = plan.unassigned.filter((x) => !picked.has(x.id));
-      finish();
-    }, "Assign");
+        plan.unassigned = plan.unassigned.filter((x) => !picked.has(x.id));
+      }, () => openAssign(fromId));
+      picked.clear();
+      if (!plan.unassigned.length) return finish();
+      render();
+    }
+
+    foot.append(btnEl("Done", finish, "btn ghost"));
+    go = btnEl("Assign", assign, "btn big");
+    foot.append(go);
     render();
   }, true);
 }
