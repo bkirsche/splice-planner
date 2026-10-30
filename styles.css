@@ -722,6 +722,12 @@ h1 { font-size: 2.6rem; font-weight: 700; margin: 0 0 6px; letter-spacing: -0.01
 .cx-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cx-head .cx-count { font-weight: 400; letter-spacing: 0; color: var(--muted); }
 .cx-head[role=button] { cursor: pointer; }
+.cx-grip { flex: none; min-width: 34px; min-height: 34px; margin: -5px 0 -5px -6px; padding: 0 4px; font: inherit; font-size: 1.15rem; font-weight: 700; line-height: 1; letter-spacing: -0.2em; color: var(--muted); background: none; border: 1px solid transparent; border-radius: 6px; cursor: grab; touch-action: none; }
+.cx-grip:hover, .cx-grip:focus-visible { color: var(--text); border-color: var(--border-2); background: var(--card); outline: none; }
+.cx-moving, .cx-moving * { cursor: grabbing !important; user-select: none; }
+.cx-block-dragging { opacity: 0.45; outline: 2px dashed var(--accent); }
+.cx-drop-before { box-shadow: 0 -6px 0 -1px var(--accent); }
+.cx-drop-after { box-shadow: 0 6px 0 -1px var(--accent); }
 .cx-head[role=button]:hover, .cx-head[role=button]:focus-visible { background: var(--card); color: var(--text); outline: none; }
 .cx-levels { display: inline-flex; align-items: center; margin-right: 6px; border: 1px solid var(--border-2); border-radius: 8px; overflow: hidden; }
 .cx-levels-label { padding: 0 10px; font-size: 0.85rem; color: var(--muted); }

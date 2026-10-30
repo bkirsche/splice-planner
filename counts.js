@@ -247,7 +247,8 @@ function dsFeed(locId) {
   const ready = all.filter((s) => !s.handOnly);
   const list = ready.length ? ready : all;
   if (!list.length) return null;
-  return { loc, list, free: list.reduce((n, s) => n + splitterPorts(s) - usedPorts(s).size, 0) };
+  const total = list.reduce((n, s) => n + splitterPorts(s), 0);
+  return { loc, list, total, free: list.reduce((n, s) => n + splitterPorts(s) - usedPorts(s).size, 0) };
 }
 
 // The next free DS port across a location's splitters, first one first.
@@ -255,6 +256,52 @@ function nextFreeDs(list) {
   for (const s of list) {
     const port = nextFreePort(s);
     if (port) return { splitterId: s.id, port };
+  }
+  return null;
+}
+
+// Terminal ports taken by homes, per terminal: eqId -> Set of port ids.
+// One pass over the plan, so a list of locations can share it.
+function takenTerminalPorts() {
+  const taken = new Map();
+  for (const h of plan.points) {
+    if (!h.tport) continue;
+    if (!taken.has(h.tport.eqId)) taken.set(h.tport.eqId, new Set());
+    taken.get(h.tport.eqId).add(h.tport.portId);
+  }
+  return taken;
+}
+
+// Where homes fed from a location can take terminal ports: the terminals
+// at that location itself (not up the route), their ports in total and
+// the open ones. Only used when assigning homes.
+function terminalFeed(locId, taken = takenTerminalPorts()) {
+  const loc = point(locId);
+  const list = loc ? terminalsAt(loc) : [];
+  if (!list.length) return null;
+  let total = 0;
+  let free = 0;
+  for (const t of list) {
+    const used = taken.get(t.id);
+    for (const port of terminalPorts(t)) {
+      total++;
+      if (!used || !used.has(port.id)) free++;
+    }
+  }
+  return { loc, list, total, free };
+}
+
+// The next open terminal port across a location's terminals, first one
+// first. Marks it taken so the next call moves on.
+function nextFreeTerminalPort(list, taken) {
+  for (const t of list) {
+    if (!taken.has(t.id)) taken.set(t.id, new Set());
+    const used = taken.get(t.id);
+    const port = terminalPorts(t).find((x) => !used.has(x.id));
+    if (port) {
+      used.add(port.id);
+      return { eqId: t.id, portId: port.id };
+    }
   }
   return null;
 }

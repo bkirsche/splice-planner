@@ -496,7 +496,10 @@ document.getElementById("unassigned-homes").addEventListener("click", (e) => {
 // that have some (greyed, with a count, still pickable), each by name,
 // B14410 before B14411. Each shows the DS ports free on the splitters that
 // would feed its homes: its own, or "at" the nearest one up the route.
+// A location with a terminal shows its open terminal ports instead of an
+// upstream splitter's; with a splitter of its own too, both, by kind.
 function feederOptions() {
+  const taken = takenTerminalPorts();
   const homes = new Map();
   for (const p of plan.points) {
     if (p.type !== "nid") continue;
@@ -509,9 +512,13 @@ function feederOptions() {
   const option = (p, group) => {
     const n = homes.get(p.id) || 0;
     const feed = dsFeed(p.id);
+    const term = terminalFeed(p.id, taken);
     let label = `${p.name} (${typeLabel(p.type)})`;
     if (n) label += ` · ${n} home${n === 1 ? "" : "s"}`;
-    if (feed) label += ` · ${feed.free} free${feed.loc === p ? "" : ` at ${feed.loc.name}`}`;
+    if (term) {
+      if (feed && feed.loc === p) label += ` · ${feed.free} of ${feed.total} splitter ports open`;
+      label += ` · ${term.free} of ${term.total} terminal ports open`;
+    } else if (feed) label += ` · ${feed.free} free${feed.loc === p ? "" : ` at ${feed.loc.name}`}`;
     return { value: p.id, label, group, className: n ? "has-homes" : "" };
   };
   return [
@@ -562,8 +569,12 @@ function openAssign(fromId) {
     const ds = inputEl("checkbox");
     const dsLabel = el("span");
     dsRow.append(ds, dsLabel);
+    const tpRow = el("label", "toggle");
+    const tp = inputEl("checkbox");
+    const tpLabel = el("span");
+    tpRow.append(tp, tpLabel);
     const autoSplice = autoSpliceBox();
-    body.append(dsRow, autoSplice.row);
+    body.append(dsRow, tpRow, autoSplice.row);
 
     let go;
     function render() {
@@ -609,6 +620,17 @@ function openAssign(fromId) {
       return from.value ? dsFeed(from.value) : null;
     }
 
+    // Terminal ports: each home gets the next open port on the terminals
+    // at that location, in order. Blocked only if there aren't enough.
+    function terminalFor() {
+      return from.value ? terminalFeed(from.value) : null;
+    }
+    const terminalsText = (t) => {
+      if (t.list.length > 1) return `the ${t.list.length} terminals at ${t.loc.name}`;
+      const name = eqLabel(t.list[0]);
+      return /terminal/i.test(name) ? name : `terminal ${name}`;
+    };
+
     function refresh() {
       const shown = shownHomes();
       allBox.checked = shown.length > 0 && shown.every((h) => picked.has(h.id));
@@ -624,6 +646,16 @@ function openAssign(fromId) {
         dsLabel.textContent = `Distributed split: give each home a DS port on ${on} at ${hit.loc.name} (${free} free)`;
         if (ds.checked && n > free) {
           formError.textContent = `Only ${free} DS ports are free on ${on} at ${hit.loc.name}, but ${n} homes are ticked.`;
+          formError.hidden = false;
+          blocked = true;
+        }
+      }
+      const term = terminalFor();
+      tpRow.hidden = !term;
+      if (term) {
+        tpLabel.textContent = `Put each home on a port of ${terminalsText(term)} (${term.free} open)`;
+        if (tp.checked && n > term.free && !blocked) {
+          formError.textContent = `Only ${term.free} ports are open on ${terminalsText(term)}, but ${n} homes are ticked.`;
           formError.hidden = false;
           blocked = true;
         }
@@ -644,11 +676,14 @@ function openAssign(fromId) {
     });
     from.addEventListener("change", refresh);
     ds.addEventListener("change", refresh);
+    tp.addEventListener("change", refresh);
 
     // Assign keeps the dialog open on the homes that are left, so a job
     // can be placed in several goes. Each batch has its own Undo.
     function assign() {
       const hit = ds.checked && splitterFor();
+      const term = tp.checked && terminalFor();
+      const taken = term ? takenTerminalPorts() : null;
       const fibers = Number(drop.value);
       const homes = plan.unassigned.filter((x) => picked.has(x.id));
       const fromId = from.value;
@@ -662,6 +697,8 @@ function openAssign(fromId) {
             stop.ds = port;
             stop.dsManual = true;
           }
+          const tport = term && nextFreeTerminalPort(term.list, taken);
+          if (tport) stop.tport = tport;
           if (fibers) {
             const d = { id: makeId(), name: nextCableName("cable", true), from: fromId, to: stop.id, fibers };
             plan.cables.push(autoSplice.box.checked ? d : spliceByHand(d));
