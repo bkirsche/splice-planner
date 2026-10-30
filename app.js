@@ -114,6 +114,7 @@ function show(name) {
 document.querySelector('[data-start="new"]').addEventListener("click", () => {
   if (guestBlocked()) return;
   plan = newPlan();
+  clearUndo();
   resetEditBaseline();
   savePlan();
   show("route");
@@ -258,6 +259,7 @@ backBtn.addEventListener("click", () => {
   }
   disarmBack();
   plan = null;
+  clearUndo();
   savePlan();
   closeMenu();
   closePanels();
@@ -1332,10 +1334,7 @@ function removeStop(id) {
     formButtons(foot, () => {
       finish();
       withUndo(extra ? `Removed ${p.name} and the ${plural(extra, "location")} fed from it.` : `Removed ${p.name}.`, () => {
-        plan.points = plan.points.filter((x) => !doomed.has(x.id));
-        plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
-        plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
-        plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
+        purgeRemoved([...doomed]);
       });
     }, "Remove");
   });
@@ -1350,6 +1349,7 @@ function renderResume() {
 resumeBtn.addEventListener("click", () => {
   if (!draft) return;
   plan = draft;
+  clearUndo();
   draft = null;
   migrateCounts(plan);
   autoCounts();

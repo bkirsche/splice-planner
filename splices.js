@@ -135,6 +135,9 @@ function buildSpliceModel() {
 
   function fiberLabel(cable, n) {
     const f = colorCode(cable.fibers)[n - 1];
+    // A fiber the cable doesn't have (a plan saved before resizes were
+    // checked): a broken connection, not a crash.
+    if (!f) return { text: `${cableLabel(cable)} #${n}`, colors: `not on this ${cable.fibers}F cable`, missing: true };
     const tube = tubeCount(cable.fibers) > 1 ? `${f.tubeColor.name} tube, ` : "";
     return { text: `${cableLabel(cable)} #${n}`, colors: `${tube}${f.fiberColor.name}`, fiber: f.fiberColor, tube: f.tubeColor };
   }

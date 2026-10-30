@@ -154,6 +154,7 @@ function loadPlanText(text, fileName) {
   const when = data.savedAt || plan.editedAt;
   const from = who ? `From ${who}${when ? `, ${shortDate(when)}` : ""}. ` : "";
   plan.receivedFrom = who ? { by: who, at: when || null } : undefined;
+  clearUndo();
   if (before) offerUndo(`${from}Opened ${fileName}. The plan that was on screen is replaced.`, before);
   else showNote(`${from}Opened ${fileName}.`);
   renderHeader();

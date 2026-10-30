@@ -403,7 +403,7 @@ addFeatureType({
         const sizes = c && !CABLE_SIZES.includes(c.fibers) ? [...CABLE_SIZES, c.fibers].sort((a, b) => a - b) : CABLE_SIZES;
         return sizes.map((n) => ({ value: n, label: `${n}F` }));
       },
-      check: (c, v) => f2Stuck(cableSpans(c), v) || "",
+      check: (c, v) => resizeStuck(cableSpans(c), v) || "",
       set: (c, v) => {
         for (const s of cableSpans(c)) s.fibers = v;
       } },
