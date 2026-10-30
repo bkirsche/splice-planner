@@ -470,7 +470,7 @@ function spliceSlots(model, L) {
 
 // A splice case's trays as cards of slot circles. `at` maps "tray/slot"
 // to the splice key in it; onSlot makes the slots tappable.
-function trayPicture(trays, size, at = new Map(), onSlot = null, selected = null) {
+function trayPicture(trays, size, at = new Map(), onSlot = null, selected = null, dim = null) {
   const grid = el("div", "cx-trays");
   for (let t = 1; t <= trays; t++) {
     const tray = el("div", "cx-tray-card");
@@ -493,6 +493,10 @@ function trayPicture(trays, size, at = new Map(), onSlot = null, selected = null
           if (f.fiberColor.striped) cell.classList.add("striped");
         }
         cell.title = `Tray ${t} slot ${sl}: ${endpointLabel(key)}`;
+        if (dim && dim.has(key)) {
+          cell.classList.add("dim");
+          cell.title += " (another phase)";
+        }
       } else cell.title = `Tray ${t} slot ${sl}: empty`;
       cells.append(cell);
     }
@@ -515,6 +519,45 @@ const FOLD_LEVELS = [
   ["tubes", "Tubes", "Cables and their tubes"],
   ["strands", "Strands", "Every fiber"],
 ];
+
+// --- Phases in the editor ---
+// A splice belongs to the later phase of the two things it joins, the
+// rule splice sheets use (rowsAt): fibers coming in take the phase of the
+// span arriving here. A patch carries its own phase.
+function endpointPhase(locId, key) {
+  const [kind, id] = key.split(":");
+  if (kind !== "fiber") return phaseIdx(findEquipment(id));
+  const arriving = incomingCable(locId);
+  return phaseIdx(arriving && cableStart(arriving).id === id ? arriving : cableById(id));
+}
+
+function connPhase(locId, c) {
+  return c.kind === "patch" ? phaseIdx(c.x) : Math.max(endpointPhase(locId, c.from), endpointPhase(locId, c.to));
+}
+
+// The editor's Phases switch: mark what's from another phase than the one
+// on screen, hide it (it's never deleted), or show everything plain.
+const CASE_PHASE_MODES = [
+  ["mark", "Mark", "Mark splices from other phases with their phase, dimmed and dashed"],
+  ["hide", "Hide others", "Show only the phase on screen. The rest stays in the plan, just out of view."],
+  ["off", "Off", "Show every splice the same, whatever its phase"],
+];
+const CASE_PHASE_KEY = "splicePlanner.casePhases";
+let casePhaseMode = "mark";
+try {
+  casePhaseMode = localStorage.getItem(CASE_PHASE_KEY) || "mark";
+} catch {}
+
+// "Phase 4A" (or the phase's own name when it already says Phase).
+function phaseBadge(i, v) {
+  const name = phaseName(i);
+  const text = /^phase\b/i.test(name) ? name : `Phase ${name}`;
+  const b = el("span", "cx-phase " + (i < v ? "past" : "later"), text);
+  b.title = i < v ? `Existing: from ${text}, before the phase on screen` : `${text}: after the phase on screen, not built yet`;
+  // The phase lock (next batch) adds its lock mark to this badge.
+  b.dataset.phase = i;
+  return b;
+}
 
 // --- Back to how it was when opened ---
 // Everything the editor can change at a location, as it was when the
@@ -617,6 +660,7 @@ function openConnections(locId) {
   let hidden = null; // side -> key -> tube header, for rows folded away
   let menus = null; // row or header -> its right-click menu
   let blockIds = null; // side -> the block ids as shown, top to bottom
+  let phaseView = null; // this render's phase marking, for the lines
   const foldState = () => JSON.stringify([foldLevel, [...folds.cables], [...folds.tubes]]);
   if (!caseOpened || caseOpened.locId !== locId) {
     caseOpened = { locId, state: caseState(L), folds: foldState(),
@@ -729,6 +773,20 @@ function openConnections(locId) {
       blockIds = { L: left.map((g) => g.id), R: right.map((g) => g.id) };
       const closure = closureAt(L);
       const slots = spliceSlots(model, L) || new Map();
+      // Phases: with one on screen, what's from another phase is marked or
+      // hidden. Hidden ones keep their rows' places taken: those rows
+      // aren't shown at all, so nothing can be spliced over them.
+      const v = viewIdx();
+      const phaseMode = v === null ? "off" : casePhaseMode;
+      const phaseOf = new Map(conns.map((c) => [c, connPhase(locId, c)]));
+      const otherPhase = (c) => phaseMode !== "off" && phaseOf.get(c) !== v;
+      const hideConn = (c) => phaseMode === "hide" && otherPhase(c);
+      const visible = conns.filter((c) => !hideConn(c));
+      const groupPhase = (g) => {
+        const [kind, id] = g.id.split(":");
+        return kind === "cable" ? endpointPhase(locId, `fiber:${id}`) : phaseIdx(findEquipment(id));
+      };
+      phaseView = { otherPhase, hideConn };
 
       info.innerHTML = "";
       const through = childCables(locId).filter((x) => x.through);
@@ -736,6 +794,10 @@ function openConnections(locId) {
       if (closure) lines.push(`${eqLabel(closure)}: ${closure.trays} trays x ${closure.slots} splices.`);
       for (const t of through) lines.push(`${t.name} ${THROUGH_LABELS[t.through]} here (not spliced).`);
       lines.push("Drag from the left to the right to connect, or tap one end and then the other. Drag a folded tube onto a folded tube to splice it all at once. Tap a line or × to take it apart. Press and hold a block's header (long-press on a touch screen), then drag it up or down to move it.");
+      if (phaseMode === "hide" && visible.length < conns.length) {
+        const n = conns.length - visible.length;
+        lines.push(`Showing ${phaseName(v)} only: ${n} splice${n === 1 ? "" : "s"} from other phases ${n === 1 ? "is" : "are"} hidden, not deleted.`);
+      }
       for (const l of lines) info.append(el("p", "hint", l));
       if (!incomingCable(locId) && L.id !== plan.points[0].id) {
         info.append(el("p", "hint warn", `No cable reaches ${L.name} yet. You can still look around and set things up here.`));
@@ -760,7 +822,7 @@ function openConnections(locId) {
             renderRoute();
           }
           render();
-        }, moving));
+        }, moving, new Set(conns.filter(otherPhase).map((c) => c.to))));
       }
 
       tools.innerHTML = "";
@@ -781,6 +843,25 @@ function openConnections(locId) {
         levels.append(b);
       }
       tools.append(levels);
+      if (v !== null) {
+        const modes = el("div", "cx-levels");
+        modes.setAttribute("role", "group");
+        modes.setAttribute("aria-label", "Phases");
+        modes.append(el("span", "cx-levels-label", "Phases"));
+        for (const [m, name, tip] of CASE_PHASE_MODES) {
+          const b = btnEl(name, () => {
+            casePhaseMode = m;
+            try {
+              localStorage.setItem(CASE_PHASE_KEY, m);
+            } catch {}
+            render();
+          }, "cx-level" + (casePhaseMode === m ? " on" : ""));
+          b.title = tip;
+          b.setAttribute("aria-pressed", String(casePhaseMode === m));
+          modes.append(b);
+        }
+        tools.append(modes);
+      }
       tools.append(btnEl("Fill gaps from free fibers", fillGapsNow, "btn ghost"), btnEl("Reset to automatic", () => {
         withUndo("Back to the app's own choices and block order for the cables leaving here. Patches and F2 counts stayed.", () => resetConnections(locId));
         render();
@@ -797,7 +878,7 @@ function openConnections(locId) {
         tools.append(arr);
       }
       if (!closure && !isCabinet(L)) tools.append(btnEl("Add a splice case", () => openEquipment(locId), "btn ghost"));
-      if (conns.length) tools.append(btnEl(`Remove all ${conns.length}`, () => removeConns(conns, `at ${L.name}`), "btn ghost cx-danger"));
+      if (visible.length) tools.append(btnEl(`Remove all ${visible.length}`, () => removeConns(visible, `at ${L.name}`), "btn ghost cx-danger"));
       // What's selected (Ctrl or Shift-click), and how to act on it.
       if (sel.size) tools.append(el("span", "cx-selcount", `${sel.size} selected · Delete or right-click to remove · Esc clears`));
 
@@ -851,6 +932,10 @@ function openConnections(locId) {
           x.addEventListener("pointerdown", (e) => e.stopPropagation());
           row.append(x);
         }
+        if (conn && otherPhase(conn)) {
+          row.classList.add("cx-other-phase");
+          row.append(phaseBadge(phaseOf.get(conn), v));
+        }
         if (item.key.endsWith(":auto")) row.classList.add("fixed");
         if (item.tube) tintTube(row, item.tube);
         return row;
@@ -865,8 +950,16 @@ function openConnections(locId) {
           box.dataset.id = g.id;
           const head = el("div", "cx-head");
           const cableKey = `${side}:${g.title}`;
-          const open = folds.cables.has(cableKey) ? folds.cables.get(cableKey) : foldLevel !== "cables";
+          // A cable or splitter from a later phase stays folded while
+          // other phases are hidden.
+          const gp = groupPhase(g);
+          const later = phaseMode === "hide" && gp > v;
+          const open = !later && (folds.cables.has(cableKey) ? folds.cables.get(cableKey) : foldLevel !== "cables");
           head.append(el("span", "cx-chev", open ? "▾" : "▸"), el("span", "cx-title", g.title));
+          if (phaseMode !== "off" && gp !== v) {
+            head.classList.add("cx-other-phase");
+            head.append(phaseBadge(gp, v));
+          }
           head.title = open ? "Fold this cable up" : "Show this cable's tubes";
           foldToggle(head, open, () => {
             folds.cables.set(cableKey, !open);
@@ -902,7 +995,7 @@ function openConnections(locId) {
             if (!tubes.has(item.tubeNo)) tubes.set(item.tubeNo, []);
             tubes.get(item.tubeNo).push(item);
           }
-          const connsIn = (items) => items.map((x) => connOf(side, x.key)).filter(Boolean);
+          const connsIn = (items) => items.map((x) => connOf(side, x.key)).filter((c) => c && !hideConn(c));
           const tubeKey = (t) => `${side}:${g.title}:${t}`;
           // A cable with one tube shows its fibers from the Tubes level.
           const isFolded = (t) => (folds.tubes.has(tubeKey(t)) ? folds.tubes.get(tubeKey(t))
@@ -1011,6 +1104,8 @@ function openConnections(locId) {
               if (folded) for (const x of items) hidden[side].set(x.key, sw);
             }
             if (folded) continue;
+            const c = connOf(side, item.key);
+            if (c && hideConn(c)) continue;
             const row = endRow(item, side);
             // The tube header just above it, for the tube's items.
             const tubeAt = item.tube ? [...box.querySelectorAll(".cx-tube")].pop() : null;
@@ -1024,7 +1119,7 @@ function openConnections(locId) {
       fill(colL, left, "L");
       fill(colR, right, "R");
       // Auto outputs (homes on a splitter with no DS) can't be dragged, but show.
-      for (const c of conns.filter((x) => x.from.endsWith(":auto"))) {
+      for (const c of visible.filter((x) => x.from.endsWith(":auto"))) {
         if (!colL.querySelector(`[data-key="${CSS.escape(c.from)}"]`)) {
           const s = findEquipment(c.from.split(":")[1]);
           const g = [...colL.querySelectorAll(".cx-group")].find((x) => x.dataset.title === `${eqLabel(s)} outputs`);
@@ -1032,9 +1127,9 @@ function openConnections(locId) {
           else (g || colL).append(endRow({ key: c.from, label: "No DS" }, "L"));
         }
       }
-      shown = conns;
+      shown = visible;
       stickLeft();
-      requestAnimationFrame(() => drawLines(conns));
+      requestAnimationFrame(() => drawLines(visible));
     }
 
     // The incoming side stays in view while the long right side scrolls.
@@ -1105,7 +1200,8 @@ function openConnections(locId) {
         // A line into a folded tube only points at it: open the tube to
         // work on that fiber.
         const folded = !rowA || !rowB || out;
-        path.setAttribute("class", "cx-line " + c.kind + (folded ? " folded" : "") + (sel.has(c.to) ? " sel" : ""));
+        path.setAttribute("class", "cx-line " + c.kind + (folded ? " folded" : "") + (sel.has(c.to) ? " sel" : "")
+          + (phaseView && phaseView.otherPhase(c) ? " other-phase" : ""));
         const color = rowA ? rowA.style.background : keyColor(c.from);
         if (color) path.style.stroke = color;
         if (!folded) path.addEventListener("click", () => removeConns([c]));
