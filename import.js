@@ -460,8 +460,9 @@ function feederOptions() {
 }
 
 // Tick homes on the unassigned list and pick the location that feeds them.
+// Opened from a location's menu or a check, that location starts picked;
+// from the top bar (or after an Undo) nothing is, so the user chooses.
 function openAssign(fromId) {
-  const feeders = plan.points.filter((p) => p.type !== "nid");
   const picked = new Set(plan.unassigned.map((h) => h.id));
   openForm(`Unassigned homes (${plan.unassigned.length})`, (body, foot) => {
     if (!plan.unassigned.length) {
@@ -483,16 +484,19 @@ function openAssign(fromId) {
     search.addEventListener("input", () => render());
 
     const grid = el("div", "form-grid");
-    const from = selectEl(feederOptions(), fromId || feeders[feeders.length - 1].id);
-    // After each batch: new counts and groups, same location picked.
+    // The first option is a placeholder that can't be picked back.
+    const fromOptions = () => [{ value: "", label: "Pick a location…", disabled: true }, ...feederOptions()];
+    const from = selectEl(fromOptions(), fromId || "");
+    // After each batch: new counts and groups, and no location picked, so
+    // the next batch isn't aimed at the one just filled.
     const refillFrom = () => {
-      const keep = from.value;
-      from.replaceChildren(...selectEl(feederOptions()).children);
-      from.value = keep;
+      from.replaceChildren(...selectEl(fromOptions()).children);
+      from.value = "";
     };
     const drop = dropSelect(1);
     grid.append(fieldEl("Fed from", from), fieldEl("Drop cable", drop));
-    body.append(grid);
+    const fromHint = el("p", "hint", "Pick where these homes are fed from.");
+    body.append(grid, fromHint);
     const dsRow = el("label", "toggle");
     const ds = inputEl("checkbox");
     const dsLabel = el("span");
@@ -540,7 +544,7 @@ function openAssign(fromId) {
     // Distributed split: each home gets the next free DS port on the
     // splitter feeding that location. Blocked if there aren't enough.
     function splitterFor() {
-      const loc = feedingLocation(from.value);
+      const loc = from.value && feedingLocation(from.value);
       return loc ? { loc, s: splittersAt(loc)[0] } : null;
     }
 
@@ -549,6 +553,7 @@ function openAssign(fromId) {
       allBox.checked = shown.length > 0 && shown.every((h) => picked.has(h.id));
       const n = picked.size;
       const hit = splitterFor();
+      fromHint.hidden = !!from.value;
       dsRow.hidden = !hit;
       formError.hidden = true;
       let blocked = false;
@@ -563,7 +568,7 @@ function openAssign(fromId) {
       }
       if (go) {
         go.textContent = `Assign ${n} home${n === 1 ? "" : "s"}`;
-        go.disabled = !n || blocked;
+        go.disabled = !n || !from.value || blocked;
       }
     }
 
@@ -585,6 +590,7 @@ function openAssign(fromId) {
       const fibers = Number(drop.value);
       const homes = plan.unassigned.filter((x) => picked.has(x.id));
       const fromId = from.value;
+      if (!fromId || !picked.size) return;
       const fromName = plan.points.find((p) => p.id === fromId).name;
       withUndo(`Assigned ${homes.length} home${homes.length === 1 ? "" : "s"} to ${fromName}.`, () => {
         for (const h of homes) {
@@ -599,7 +605,7 @@ function openAssign(fromId) {
           }
         }
         plan.unassigned = plan.unassigned.filter((x) => !picked.has(x.id));
-      }, () => openAssign(fromId));
+      }, () => openAssign(null));
       picked.clear();
       if (!plan.unassigned.length) return finish();
       refillFrom();
