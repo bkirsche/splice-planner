@@ -232,6 +232,7 @@ function renderFeatures() {
         ...(editable.length ? [{ icon: "edit", label: `Set a value on ${fe.picked.size} selected…`, run: () => {
           fePanel.querySelector(".fe-bulk select").focus();
         } }] : []),
+        ...(isGuest() ? [] : feEditItems(t, r, all.filter((x) => fe.picked.has(x.id)))),
       ], e);
     });
     const td0 = el("td", "fe-tick");
@@ -288,6 +289,58 @@ function renderFeatures() {
       } else focusCell(again);
     }
   }
+}
+
+// The edit actions of the route's menus, on a row of the table: sending
+// homes back works on the whole selection, the rest on the row clicked
+// (named in the label when several rows are selected).
+function feEditItems(t, r, picked) {
+  const items = [];
+  const named = (label) => (picked.length > 1 ? `${label} — ${r.name}` : label);
+  const after = () => {
+    fe.picked.clear();
+    renderFeatures();
+  };
+  if (t.key === "cables") {
+    items.push({ icon: "edit", label: named("Edit cable"), sep: true, run: () => openPath(spanPathTo(r), r.id) });
+    items.push({ icon: "remove", label: named("Remove cable"), danger: true, run: () => {
+      const text = removeCableText(r);
+      finish();
+      withUndo(text, () => removeCableFrom(r));
+    } });
+    return items;
+  }
+  const p = point(t.locOf(r));
+  if (!p) return items;
+  // Equipment rows: the equipment dialog of the location it sits at.
+  if (p !== r) {
+    items.push({ icon: "splitter", label: `Equipment at ${p.name}`, sep: true, run: () => openEquipment(p.id) });
+    return items;
+  }
+  const isStart = p.id === plan.points[0].id;
+  if (p.type === "nid") {
+    const homes = unassignable(picked.length ? picked : [r]);
+    if (homes.length) items.push({ icon: "homes", label: unassignLabel(homes.length), sep: true, run: () => unassignHomes(homes, after) });
+    items.push({ icon: "edit", label: named("Address / lot"), sep: !homes.length, run: () => renameStop(p.id) });
+    items.push({ icon: "counts", label: named("Counts (F2 / DS)"), run: () => openCounts(p.id) });
+  } else {
+    items.push({ icon: isCabinet(p) ? "shelf" : "splitter", label: named("Equipment"), sep: true, run: () => openEquipment(p.id) });
+    items.push({ icon: "xconnect", label: named(isCabinet(p) ? "Connections and patching" : "Splices and connections"), run: () => openConnections(p.id) });
+    if (feedsHomes(p)) items.push({ icon: "homes", label: named("Home counts (F2 / DS)"), run: () => openHomeCounts(p.id) });
+    items.push({ icon: "info", label: named("Details"), run: () => openDetails(p.id) });
+    items.push({ icon: "edit", label: named("Rename"), run: () => renameStop(p.id) });
+    if (!isCabinet(p)) items.push({ icon: LOC_META[p.type] ? LOC_META[p.type].icon : "pin", label: named("Change location type"), run: () => changeTypeForm(p.id) });
+  }
+  if (hasPhases()) items.push({ icon: "info", label: named(`Phase (${phaseName(phaseIdx(p))})`), run: () => openPhaseForm(p.id) });
+  if (!isStart) {
+    items.push({ icon: "move", label: named("Move (feed from somewhere else)"), sep: true, run: () => openMove(p.id) });
+    if (p.type !== "nid") {
+      const fed = homesFedFrom(p.id);
+      if (fed.length) items.push({ icon: "homes", label: named(`Unassign all homes here (${fed.length})`), run: () => unassignHomes(fed, after) });
+    }
+    items.push({ icon: "remove", label: named("Remove"), danger: true, run: () => removeStop(p.id) });
+  }
+  return items;
 }
 
 function cellEditor(col, item, cell) {
