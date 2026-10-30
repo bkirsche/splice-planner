@@ -516,6 +516,75 @@ const FOLD_LEVELS = [
   ["strands", "Strands", "Every fiber"],
 ];
 
+// --- Back to how it was when opened ---
+// Everything the editor can change at a location, as it was when the
+// editor opened: picks, pins and hand-only on the cables leaving, splitter
+// inputs, patches, trays and slots, block order, homes put on a splitter
+// port here, and which cables and tubes were folded. It lives while the
+// editor stays open (an Undo closes and reopens it, which keeps it) and
+// ends when the editor closes; the next open takes a fresh one.
+let caseOpened = null;
+
+const deepCopy = (x) => (x == null ? null : JSON.parse(JSON.stringify(x)));
+
+// Homes the editor can move onto or off a splitter port here.
+function caseHomes(L) {
+  const here = new Set(splittersAt(L).map((s) => s.id));
+  const ends = new Set(childCables(L.id).filter((d) => !d.through).map((d) => cableSpans(d).at(-1).to));
+  return plan.points.filter((p) => p.type === "nid" && (ends.has(p.id) || (p.ds && here.has(p.ds.splitterId))));
+}
+
+function caseState(L) {
+  return {
+    trays: deepCopy(L.trays),
+    blockOrder: deepCopy(L.blockOrder),
+    cables: childCables(L.id).map((d) => ({ id: d.id, picks: deepCopy(d.picks), pins: deepCopy(d.pins), handOnly: d.handOnly || null })),
+    splitters: splittersAt(L).map((s) => ({ id: s.id, f2: s.f2 ?? null, f2Manual: s.f2Manual || null })),
+    xconnects: deepCopy(crossConnectsAt(L.id)),
+    homes: caseHomes(L).map((h) => ({ id: h.id, ds: deepCopy(h.ds), dsManual: h.dsManual || null, tport: deepCopy(h.tport) })),
+  };
+}
+
+function restoreCase(L, state) {
+  const put = (o, k, v) => {
+    if (v == null) delete o[k];
+    else o[k] = deepCopy(v);
+  };
+  put(L, "trays", state.trays);
+  put(L, "blockOrder", state.blockOrder);
+  for (const c of state.cables) {
+    const d = cableById(c.id);
+    if (!d) continue;
+    put(d, "picks", c.picks);
+    put(d, "pins", c.pins);
+    put(d, "handOnly", c.handOnly);
+  }
+  for (const x of state.splitters) {
+    const s = findEquipment(x.id);
+    if (!s) continue;
+    put(s, "f2", x.f2);
+    put(s, "f2Manual", x.f2Manual);
+  }
+  plan.xconnects = [...plan.xconnects.filter((x) => x.at !== L.id), ...deepCopy(state.xconnects)];
+  for (const h of state.homes) {
+    const p = point(h.id);
+    if (!p) continue;
+    put(p, "ds", h.ds);
+    put(p, "dsManual", h.dsManual);
+    put(p, "tport", h.tport);
+  }
+  savePlan();
+}
+
+// The session ends once the editor is closed for good: an Undo that
+// closes and reopens it in one go keeps it.
+new MutationObserver(() => {
+  if (!caseOpened || !formPanel.hidden) return;
+  setTimeout(() => {
+    if (formPanel.hidden || !formPanel.classList.contains("cx-panel")) caseOpened = null;
+  }, 0);
+}).observe(formPanel, { attributes: true, attributeFilter: ["hidden"] });
+
 // Tap or Enter/Space folds or opens a header; Ctrl or Shift-click
 // selects what's in it instead. Its own buttons keep their clicks.
 function foldToggle(elm, open, toggle, pick) {
@@ -548,6 +617,13 @@ function openConnections(locId) {
   let hidden = null; // side -> key -> tube header, for rows folded away
   let menus = null; // row or header -> its right-click menu
   let blockIds = null; // side -> the block ids as shown, top to bottom
+  const foldState = () => JSON.stringify([foldLevel, [...folds.cables], [...folds.tubes]]);
+  if (!caseOpened || caseOpened.locId !== locId) {
+    caseOpened = { locId, state: caseState(L), folds: foldState(),
+      conns: new Set(connectionsAt(buildSpliceModel(), locId).map((c) => `${c.from}>${c.to}`)) };
+    caseOpened.sig = JSON.stringify(caseOpened.state);
+  }
+  const opened = caseOpened;
   const title = isCabinet(L) ? `Connections at ${L.name}` : closureAt(L) ? `Splice case at ${L.name}` : `Splices at ${L.name}`;
   openForm(title, (body, foot) => {
     const info = el("div", "cx-info");
@@ -571,6 +647,30 @@ function openConnections(locId) {
           for (const c of list) sel.delete(c.to);
           render();
         });
+    }
+
+    // Back to how the case was when the editor opened. When that takes
+    // splices apart it asks first, as removing does; either way it leaves
+    // an Undo note.
+    function backToOpened() {
+      const gone = connectionsAt(buildSpliceModel(), locId).filter((c) => !opened.conns.has(`${c.from}>${c.to}`));
+      const putBack = () => {
+        withUndo(`Put ${L.name} back to how it was when you opened it.`, () => restoreCase(L, opened.state), reopen);
+        const [level, cables, tubes] = JSON.parse(opened.folds);
+        foldLevel = level;
+        folds.cables = new Map(cables);
+        folds.tubes = new Map(tubes);
+        sel.clear();
+        picked = null;
+        moving = null;
+        render();
+      };
+      if (!gone.length) return putBack();
+      const n = gone.length;
+      const one = n === 1 ? `${endpointLabel(gone[0].from)} → ${endpointLabel(gone[0].to)}` : "";
+      confirmBox("Put the splice case back?",
+        `${n === 1 ? `${one} was made since you opened ${L.name} and will be taken apart.` : `${n} connections made since you opened ${L.name} will be taken apart.`} `
+        + "Everything else goes back to how it was too. You can Undo it right after.", "Put it back", putBack);
     }
 
     function fillGapsNow() {
@@ -685,6 +785,12 @@ function openConnections(locId) {
         withUndo("Back to the app's own choices and block order for the cables leaving here. Patches and F2 counts stayed.", () => resetConnections(locId));
         render();
       }, "btn ghost"));
+      const changed = foldState() !== opened.folds || JSON.stringify(caseState(L)) !== opened.sig;
+      const back = btnEl("Back to how it was when opened", backToOpened, "btn ghost cx-back");
+      back.disabled = !changed;
+      back.title = changed ? "Undo everything changed here since this splice case was opened: splices, trays and slots, block order, folds."
+        : "Nothing changed here since you opened it.";
+      tools.append(back);
       if (conns.length) {
         const arr = btnEl("Arrange", () => arrangeNow(groups, left, right, conns), "btn ghost");
         arr.title = "Reorder the cables and splitters so the lines cross as little as possible. Splices stay as they are.";
@@ -726,6 +832,8 @@ function openConnections(locId) {
             if (tray.value && slot.value) L.trays[item.key] = { tray: Number(tray.value), slot: Number(slot.value) };
             else delete L.trays[item.key];
             savePlan();
+            const back = tools.querySelector(".cx-back");
+            if (back) back.disabled = false;
           };
           tray.addEventListener("change", save);
           slot.addEventListener("change", save);
