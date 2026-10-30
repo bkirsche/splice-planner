@@ -427,6 +427,66 @@ function updateUnassignedButton() {
   b.textContent = `Unassigned homes (${n})`;
 }
 
+// --- Sending homes back to the unassigned list ---
+// For homes placed on the wrong location: each home goes, with its drop
+// cable, the splices on that drop and its DS port, and comes back on the
+// list with its name and lot, ready to be assigned again. A home that
+// feeds other locations stays where it is. One Undo puts it all back.
+
+function unassignable(homes) {
+  return homes.filter((p) => p && p.type === "nid" && p.id !== plan.points[0].id && !childPaths(p.id).length);
+}
+
+// Homes fed straight from a location.
+function homesFedFrom(locId) {
+  return unassignable(childPaths(locId).map((x) => point(x.to)));
+}
+
+// Splices made by hand on these homes' drops: patches on their fibers,
+// and fibers pinned on a drop that is spliced by hand.
+function handSplicesOn(homes) {
+  const ids = new Set(homes.map((p) => p.id));
+  const drops = new Set(plan.cables.filter((c) => ids.has(c.to) || ids.has(c.from)).map((c) => c.id));
+  const onDrop = (key) => key.startsWith("fiber:") && drops.has(key.split(":")[1]);
+  let n = plan.xconnects.filter((x) => onDrop(x.a) || onDrop(x.b)).length;
+  for (const c of plan.cables) if (drops.has(c.id) && c.handOnly) n += Object.keys(c.pins || {}).length;
+  return n;
+}
+
+function unassignHomes(list, after = null) {
+  const homes = unassignable(list);
+  if (!homes.length) return;
+  const go = () => {
+    const text = homes.length === 1 ? `Sent ${homes[0].name} back to the unassigned list.`
+      : `Sent ${homes.length} homes back to the unassigned list.`;
+    closePanels();
+    closeMenu();
+    if (typeof gridPicked !== "undefined") for (const p of homes) gridPicked.delete(p.id);
+    withUndo(text, () => {
+      purgeRemoved(homes.map((p) => p.id));
+      for (const p of homes) {
+        // The home keeps its id, so it is the same home when assigned again.
+        const h = { id: p.id, name: p.name };
+        if (p.lot) h.lot = p.lot;
+        plan.unassigned.push(h);
+      }
+      sortHomes(plan.unassigned);
+      updateUnassignedButton();
+    });
+    if (after) after();
+  };
+  const n = handSplicesOn(homes);
+  if (!n) return go();
+  // Brian's one exception to "no are-you-sure pop-ups": splices made by hand.
+  confirmBox(n === 1 ? "Remove this connection?" : `Remove ${n} connections?`,
+    `${n === 1 ? "A splice connection" : `${n} splice connections`} made by hand on ${homes.length === 1 ? "this home's drop" : "these homes' drops"} will be taken apart. You can Undo it right after.`,
+    n === 1 ? "Remove 1 connection" : `Remove ${n} connections`, go);
+}
+
+function unassignLabel(n) {
+  return n === 1 ? "Send back to the unassigned list" : `Send ${n} homes back to the unassigned list`;
+}
+
 document.getElementById("unassigned-homes").addEventListener("click", (e) => {
   e.stopPropagation();
   openAssign(null);
