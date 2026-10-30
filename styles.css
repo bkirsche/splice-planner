@@ -1409,7 +1409,7 @@ body:not(.guest) .guest-only { display: none !important; }
   font-size: 10pt;
   border: 2px solid #1b1f24;
 }
-.print-sheet .check-table tr.existing td { color: #555; background: #f2f2f2; }
+.print-sheet .sheet-table tr.existing td { color: #555; background: #f2f2f2; }
 .print-sheet .check-table tr.problem td { background: #fdecea; }
 @media (max-width: 640px) {
   .header-actions .btn, .route-header > .btn { font-size: 0.85rem; padding: 7px 10px; }

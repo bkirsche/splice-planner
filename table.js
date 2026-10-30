@@ -200,26 +200,35 @@ function tableSplitterTools() {
     const start = Number(from.value);
     if (!Number.isInteger(start) || start < 1) return (msg.textContent = "Enter the first F2 fiber.");
     const before = JSON.stringify(plan);
-    // Clear them first so they don't block each other's fibers.
-    for (const { s } of ticked) s.f2 = null;
-    let n = start;
+    // f2Choices reads the live equipment. Simulate in place, then restore
+    // every field (including absent fields) before committing any result.
+    const original = ticked.map(({ s }) => ({ s, had: Object.hasOwn(s, "f2"), f2: s.f2 }));
     const out = [];
-    // Counts are from the start of the project: each takes the next
-    // free fiber whose count is n or more.
-    for (const { s, loc } of ticked) {
-      const choices = f2Choices(loc, s);
-      const got = choices.find((ch) => ch.start !== null && ch.start >= n && !ch.problem);
-      if (!got) {
-        plan = migratePlan(JSON.parse(before));
-        return (msg.textContent = choices.some((ch) => ch.start !== null)
-          ? `No free fiber from ${f2Text(n)} for ${eqLabel(s)} at ${loc.name}. Start lower or tick fewer splitters.`
-          : `${eqLabel(s)} at ${loc.name} isn't spliced back to the start yet, so it has no F2 counts to number. Untick it, or splice its feeder through.`);
+    let n = start;
+    try {
+      for (const { s } of ticked) s.f2 = null;
+      for (const { s, loc } of ticked) {
+        const choices = f2Choices(loc, s);
+        const got = choices.find((ch) => ch.start !== null && ch.start >= n && !ch.problem);
+        if (!got) {
+          return (msg.textContent = choices.some((ch) => ch.start !== null)
+            ? `No free fiber from ${f2Text(n)} for ${eqLabel(s)} at ${loc.name}. Start lower or tick fewer splitters.`
+            : `${eqLabel(s)} at ${loc.name} isn't spliced back to the start yet, so it has no F2 counts to number. Untick it, or splice its feeder through.`);
+        }
+        s.f2 = got.n;
+        out.push([s, got.start, got.n]);
+        n = got.start + 1;
       }
-      s.f2 = got.n;
-      out.push([s, got.start]);
-      n = got.start + 1;
+    } finally {
+      for (const { s, had, f2 } of original) {
+        if (had) s.f2 = f2;
+        else delete s.f2;
+      }
     }
-    for (const [s] of out) s.f2Manual = true;
+    for (const [s, , fiber] of out) {
+      s.f2 = fiber;
+      s.f2Manual = true;
+    }
     savePlan();
     renderRoute();
     offerUndo(`Numbered F2 on ${plural(out.length, "splitter")}: ${f2Text(out[0][1])} to ${f2Text(out.at(-1)[1])}.`, before);
@@ -289,8 +298,9 @@ async function saveAssignmentXlsx() {
   }
   const spl = [["Location", "Splitter", "Size", "F2", "Feeder fiber here", "Ports used", "Ports free", "F2 set by"]];
   for (const { s, loc } of allSplitters()) {
+    if (!phaseVisible(s, loc)) continue;
     const c = feederAt(loc.id, s);
-    const used = usedPorts(s).size;
+    const used = shownUsedPorts(s).size;
     spl.push([loc.name, eqLabel(s), s.ratio, cellValue(f2CellFor(s)), c && s.f2 ? `${c.name} #${s.f2}` : "", used, splitterPorts(s) - used, s.f2Manual ? "By hand" : "Automatic"]);
   }
   const blob = makeXlsx([
@@ -327,7 +337,7 @@ function tableTools(shownHomes) {
   issues.hidden = tableFilter.splittersOnly;
   const filtered = tableFilter.loc || tableFilter.splitter || tableFilter.issues;
   const what = filtered ? "the homes shown" : "every home";
-  const xl = btnEl("", () => saveAssignmentXlsx(), "btn ghost rt-out");
+  const xl = btnEl("", () => saveAssignmentXlsx(), "btn ghost rt-out file-action");
   xl.append(iconEl("sheet"), document.createTextNode(" Save as Excel"));
   xl.title = `Save ${what}, plus every splitter, as an Excel file.`;
   const pr = btnEl("", () => printJust(() => assignmentPage(true)), "btn ghost");

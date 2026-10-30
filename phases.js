@@ -40,6 +40,29 @@ function phasePast(obj) {
   return v !== null && phaseIdx(obj) < v;
 }
 
+// The rule for every print summary and export: a thing shows when it
+// and every location it sits at or runs between are in a phase on
+// screen. Earlier-phase work still shows, marked existing (existingNote).
+function phaseVisible(obj, ...locs) {
+  return phaseShown(obj) && locs.every((p) => !p || phaseShown(p));
+}
+
+// "Existing · Phase 1" for work from a phase before the one on screen.
+function existingNote(obj) {
+  return phasePast(obj) ? `Existing · ${phaseName(phaseIdx(obj))}` : "";
+}
+
+// A cable's spans on screen: from its start up to the first span that
+// is (or ends at a location) in a later phase. Empty if the start is.
+function shownSpans(c) {
+  const out = [];
+  for (const s of cableSpans(c)) {
+    if (!phaseVisible(s, point(s.from), point(s.to))) break;
+    out.push(s);
+  }
+  return out;
+}
+
 // Child paths whose location is in a phase on screen.
 function shownPaths(id) {
   return childPaths(id).filter((x) => phaseShown(point(x.to)));
