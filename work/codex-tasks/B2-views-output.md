@@ -38,7 +38,7 @@ Claude already wrote the shared pieces. Read them before you start, and don't ch
 
 ## Acceptance checks (browser)
 
-Serve with `python -m http.server 8600` from this folder (or `.claude/launch.json` config `splice-planner`; ports 8600-8649 only). Use a throwaway plan. Clear localStorage first if an old plan is in the way. Watch the console the whole time.
+Serve with `python -m http.server 8602` from this folder (8600 is often taken by another checkout; any free port in 8600-8649 is fine, never outside it). Use a throwaway plan. Clear localStorage first if an old plan is in the way. Watch the console the whole time.
 
 1. **A1c-01:** follow the report's steps. Home counts opens. The home reads "No splitter · no DS", has "Pick a splitter" selected and the DS select disabled. Picking the splitter puts the home on a port and saves. No error.
 2. **A1c-02:** follow the report's steps (Phase 1 home, Phase 2 home, Phase 1 on screen, Print / PDF with Summary tables). `#print-sheet .summary-page` says "Homes (1)", has no 999 Future Ave or its drop, and no Phase 2 cable, splitter, path or location details. Then put Phase 2 on screen: both homes show, and the Phase 1 one is marked Existing · Phase 1. Then pick All phases: same as before the change. For Excel, run the Splitters-sheet row builder in the console (or put a breakpoint), or say in the report how you checked it: with Phase 1 on screen, a Phase 2 splitter isn't listed.
