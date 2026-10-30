@@ -432,6 +432,33 @@ document.getElementById("unassigned-homes").addEventListener("click", (e) => {
   openAssign(null);
 });
 
+// The "Fed from" list: locations with no homes yet first, then the ones
+// that have some (greyed, with a count, still pickable), each by name,
+// B14410 before B14411. A location with a splitter shows its free DS ports.
+function feederOptions() {
+  const homes = new Map();
+  for (const p of plan.points) {
+    if (p.type !== "nid") continue;
+    const path = incomingPath(p.id);
+    if (path) homes.set(path.from, (homes.get(path.from) || 0) + 1);
+  }
+  const feeders = plan.points.filter((p) => p.type !== "nid").sort((a, b) => naturally(a.name, b.name));
+  const empty = feeders.filter((p) => !homes.get(p.id));
+  const used = feeders.filter((p) => homes.get(p.id));
+  const option = (p, group) => {
+    const n = homes.get(p.id) || 0;
+    const s = splittersAt(p)[0];
+    let label = `${p.name} (${typeLabel(p.type)})`;
+    if (n) label += ` · ${n} home${n === 1 ? "" : "s"}`;
+    if (s) label += ` · ${splitterPorts(s) - usedPorts(s).size} free`;
+    return { value: p.id, label, group, className: n ? "has-homes" : "" };
+  };
+  return [
+    ...empty.map((p) => option(p, `No homes yet (${empty.length})`)),
+    ...used.map((p) => option(p, `Has homes (${used.length})`)),
+  ];
+}
+
 // Tick homes on the unassigned list and pick the location that feeds them.
 function openAssign(fromId) {
   const feeders = plan.points.filter((p) => p.type !== "nid");
@@ -456,8 +483,13 @@ function openAssign(fromId) {
     search.addEventListener("input", () => render());
 
     const grid = el("div", "form-grid");
-    const from = selectEl(feeders.map((p) => ({ value: p.id, label: `${p.name} (${typeLabel(p.type)})` })),
-      fromId || feeders[feeders.length - 1].id);
+    const from = selectEl(feederOptions(), fromId || feeders[feeders.length - 1].id);
+    // After each batch: new counts and groups, same location picked.
+    const refillFrom = () => {
+      const keep = from.value;
+      from.replaceChildren(...selectEl(feederOptions()).children);
+      from.value = keep;
+    };
     const drop = dropSelect(1);
     grid.append(fieldEl("Fed from", from), fieldEl("Drop cable", drop));
     body.append(grid);
@@ -570,6 +602,7 @@ function openAssign(fromId) {
       }, () => openAssign(fromId));
       picked.clear();
       if (!plan.unassigned.length) return finish();
+      refillFrom();
       render();
     }
 
