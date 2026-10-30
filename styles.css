@@ -103,6 +103,8 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-
   outline-offset: 1px;
 }
 select optgroup { font-weight: 700; color: var(--muted); }
+select option { color: var(--text); font-weight: 400; }
+select option.has-homes { color: var(--muted); }
 
 /* --- Splash --- */
 

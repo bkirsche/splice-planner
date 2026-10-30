@@ -7,8 +7,8 @@ function el(tag, className, text) {
   return e;
 }
 
-// options: [{ value, label, disabled, group }]. Options with the same
-// group sit together under a heading in the dropdown.
+// options: [{ value, label, disabled, group, className }]. Options with
+// the same group sit together under a heading in the dropdown.
 function selectEl(options, value) {
   const s = document.createElement("select");
   let group = null;
@@ -17,6 +17,7 @@ function selectEl(options, value) {
     opt.value = String(o.value);
     opt.textContent = o.label;
     if (o.disabled) opt.disabled = true;
+    if (o.className) opt.className = o.className;
     if (o.group) {
       if (!group || group.label !== o.group) {
         group = document.createElement("optgroup");
