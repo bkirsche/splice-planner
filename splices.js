@@ -286,8 +286,7 @@ function spliceTable(model, locId) {
   }
   // Tray and slot, when there's a splice case here or the user set them.
   const L = point(locId);
-  const trays = closureAt(L) || Object.keys(L.trays || {}).length
-    ? traySlots(L, connectionsAt(model, locId).filter((c) => c.kind !== "patch").map((c) => c.to)) : null;
+  const trays = spliceSlots(model, L);
   const table = document.createElement("table");
   table.className = "sheet-table splice-table";
   const thead = document.createElement("thead");
@@ -381,7 +380,7 @@ function renderSpliceBody() {
     const wrap = el("div", "print-sheet sheet-preview");
     const pic = el("div", "loc-pic");
     pic.append(bigPicture(L, rows));
-    wrap.append(pic, checklist(L, rows));
+    wrap.append(pic, checklist(model, L, rows));
     body.append(wrap);
     return;
   }

@@ -417,23 +417,25 @@ function homeCountEditor(home, changed) {
   }
   const locked = !home.dsManual;
   const s = homeSplitter(home);
-  const view = el("span", "auto-val mono", [f2Label(s), homeDs(home) || "no DS"].join(" · "));
+  const view = el("span", "auto-val mono", [s ? f2Label(s) : "No splitter", homeDs(home) || "no DS"].join(" · "));
   const editor = el("span", "count-selects");
-  const sSel = selectEl(list.map((x) => {
+  const sSel = selectEl([...(s ? [] : [{ value: "", label: "Pick a splitter" }]), ...list.map((x) => {
     const full = nextFreePort(x, home.id) === null;
-    return { value: x.id, label: `${f2Label(x)} · ${eqLabel(x)}${full ? " (full)" : ""}`, disabled: full && x.id !== s.id };
-  }), s.id);
+    return { value: x.id, label: `${f2Label(x)} · ${eqLabel(x)}${full ? " (full)" : ""}`, disabled: full && (!s || x.id !== s.id) };
+  })], s ? s.id : "");
   sSel.title = "Splitter (F2)";
   const ports = [{ value: "", label: "No DS" }];
-  const used = usedPorts(s, home.id);
-  for (let n = 1; n <= splitterPorts(s); n++) {
+  const used = s ? usedPorts(s, home.id) : new Map();
+  for (let n = 1; n <= (s ? splitterPorts(s) : 0); n++) {
     const other = used.get(n);
     ports.push({ value: n, label: `DS port ${n}${other ? ` (swap with ${other.name})` : ""}` });
   }
-  const pSel = selectEl(ports, home.ds && home.ds.splitterId === s.id ? home.ds.port : "");
+  const pSel = selectEl(ports, s && home.ds && home.ds.splitterId === s.id ? home.ds.port : "");
   pSel.title = "DS port";
+  pSel.disabled = !s;
   sSel.addEventListener("change", () => {
     const next = list.find((x) => x.id === sSel.value);
+    if (!next) return;
     const port = nextFreePort(next, home.id);
     if (port !== null) putHomeOnPort(home, next, port);
     changed();
@@ -445,7 +447,7 @@ function homeCountEditor(home, changed) {
     } else putHomeOnPort(home, s, Number(pSel.value));
     changed();
   });
-  if (list.length > 1) editor.append(sSel);
+  if (!s || list.length > 1) editor.append(sSel);
   else editor.append(el("span", "mono fixed-val", f2Label(s)));
   editor.append(pSel);
   wrap.append(lockField(locked, view, editor, (lock) => {

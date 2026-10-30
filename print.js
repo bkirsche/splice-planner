@@ -585,10 +585,10 @@ function cableTable(model) {
   thead.append(head);
   table.append(thead);
 
-  const starts = plan.cables.filter((c) => !c.through && !isDrop(c));
+  const starts = plan.cables.filter((c) => !c.through && !isDrop(c) && shownSpans(c).length);
   for (const c of starts) {
-    const spans = cableSpans(c);
-    const tr = el("tr");
+    const spans = shownSpans(c);
+    const tr = el("tr", phasePast(c) ? "existing" : "");
     const via = spans.slice(1).map((s) => `${point(s.from).name} (${THROUGH_LABELS[s.through]})`).join(", ");
     const tubes = el("td", "tube-cell");
     for (let t = 0; t < tubeCount(c.fibers); t++) {
@@ -598,7 +598,7 @@ function cableTable(model) {
       tubes.append(tube);
     }
     tr.append(
-      el("td", "strong", c.name),
+      el("td", "strong", c.name + (existingNote(c) ? ` · ${existingNote(c)}` : "")),
       el("td", "", cableKindText(c)),
       el("td", "", `${c.fibers}F`),
       el("td", "", point(spans[0].from).name),
@@ -616,7 +616,7 @@ function cableTable(model) {
 
 function splitterTable() {
   const rows = [];
-  for (const p of plan.points) for (const s of splittersAt(p)) rows.push({ p, s });
+  for (const p of plan.points) for (const s of splittersAt(p)) if (phaseVisible(s, p)) rows.push({ p, s });
   const wrap = el("section", "sheet-block");
   if (!rows.length) return wrap;
   wrap.append(el("h2", "", "Splitters"));
@@ -627,13 +627,13 @@ function splitterTable() {
   thead.append(head);
   table.append(thead);
   for (const { p, s } of rows) {
-    const tr = el("tr");
+    const tr = el("tr", phasePast(s) ? "existing" : "");
     tr.append(
       el("td", "", p.name),
-      el("td", "strong", eqLabel(s) + (tailText(s, p) ? ` · ${tailText(s, p)}` : "")),
+      el("td", "strong", eqLabel(s) + (tailText(s, p) ? ` · ${tailText(s, p)}` : "") + (existingNote(s) ? ` · ${existingNote(s)}` : "")),
       el("td", "strong", s.f2 ? f2CellFor(s) : "not set"),
       el("td", "", f2Colors(s) || "—"),
-      el("td", "", `${usedPorts(s).size} of ${splitterPorts(s)}`),
+      el("td", "", `${shownUsedPorts(s).size} of ${splitterPorts(s)}`),
     );
     table.append(tr);
   }
@@ -643,7 +643,7 @@ function splitterTable() {
 
 // Paths with conduit or footage.
 function pathTable() {
-  const rows = plan.paths.filter((x) => conduitLabel(x.conduit));
+  const rows = plan.paths.filter((x) => conduitLabel(x.conduit) && phaseVisible(x, point(x.from), point(x.to)));
   const wrap = el("section", "sheet-block");
   if (!rows.length) return wrap;
   wrap.append(el("h2", "", "Paths and conduit"));
@@ -655,7 +655,7 @@ function pathTable() {
   table.append(thead);
   for (const x of rows) {
     const cd = x.conduit;
-    const cables = pathCables(x);
+    const cables = pathCables(x).filter((c) => phaseVisible(c, point(c.from), point(c.to)));
     const tr = el("tr");
     tr.append(el("td", "", point(x.from).name), el("td", "", point(x.to).name), el("td", "strong", cd.size || "—"),
       el("td", "", cd.size ? String(cd.ducts || 1) : "—"), el("td", "", cd.color || "—"),
@@ -668,7 +668,7 @@ function pathTable() {
 
 // Cabinet and location details.
 function detailsTable() {
-  const rows = plan.points.filter((p) => detailLines(p).length);
+  const rows = plan.points.filter((p) => phaseVisible(p) && detailLines(p).length);
   const wrap = el("section", "sheet-block");
   if (!rows.length) return wrap;
   wrap.append(el("h2", "", "Location details"));
@@ -688,7 +688,7 @@ function detailsTable() {
 }
 
 function homesTable() {
-  const homes = plan.points.filter((p) => p.type === "nid");
+  const homes = plan.points.filter((p) => p.type === "nid" && phaseVisible(p));
   const wrap = el("section", "sheet-block");
   wrap.append(el("h2", "", `Homes (${homes.length})`));
   if (!homes.length) {
@@ -704,10 +704,10 @@ function homesTable() {
   homes.forEach((h, i) => {
     const c = incomingCable(h.id);
     const path = incomingPath(h.id);
-    const tr = el("tr");
+    const tr = el("tr", phasePast(h) ? "existing" : "");
     tr.append(
       el("td", "", String(i + 1)),
-      el("td", "strong", hasAddress(h) ? h.name : "No address yet"),
+      el("td", "strong", (hasAddress(h) ? h.name : "No address yet") + (existingNote(h) ? ` · ${existingNote(h)}` : "")),
       el("td", "strong", h.lot || "—"),
       el("td", "", path ? point(path.from).name : "—"),
       el("td", "", c ? c.name : "—"),
@@ -823,7 +823,7 @@ function locationPage(model, L, n, total) {
   // Under a tall drawing there's no room left for the tables, so they
   // start on the next sheet instead of leaving their headings behind.
   if (parseFloat(drawing.style.height) > TABLES_NEXT_SHEET_IN) bottom.classList.add("next-sheet");
-  bottom.append(checklist(L, rows), homesHereTable(L));
+  bottom.append(checklist(model, L, rows), homesHereTable(L));
   page.append(top, pic, bottom);
   return page;
 }
@@ -1223,7 +1223,7 @@ function bubble(at, label) {
 
 // The checklist under the drawing: one line per splice, keyed to the
 // bubbles, with colors, tray and slot, and a box to tick.
-function checklist(L, rows) {
+function checklist(model, L, rows) {
   const wrap = el("div", "loc-check");
   wrap.append(el("h3", "", "Splices"));
   const xcs = crossConnectsAt(L.id).filter(phaseShown);
@@ -1231,7 +1231,7 @@ function checklist(L, rows) {
     wrap.append(el("p", "", "Nothing is spliced here."));
     return wrap;
   }
-  const trays = closureAt(L) || Object.keys(L.trays || {}).length ? traySlots(L, rows.map((r) => r.key)) : null;
+  const trays = spliceSlots(model, L);
   const v = viewIdx();
   const table = el("table", "sheet-table check-table");
   const head = el("tr");

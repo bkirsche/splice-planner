@@ -129,14 +129,29 @@ function parseCSV(text) {
 }
 
 function guessDelimiter(text) {
-  const firstLines = text.split(/\r?\n/).slice(0, 5).join("\n");
+  const lines = text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 20);
   let best = ",";
+  let bestLines = 0;
   let bestCount = 0;
   for (const d of [",", ";", "\t", "|"]) {
-    const count = firstLines.split(d).length - 1;
-    if (count > bestCount) {
-      best = d;
-      bestCount = count;
+    const counts = new Map();
+    for (const line of lines) {
+      let quoted = false;
+      let count = 0;
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === '"') {
+          if (quoted && line[i + 1] === '"') i++;
+          else quoted = !quoted;
+        } else if (!quoted && line[i] === d) count++;
+      }
+      if (count) counts.set(count, (counts.get(count) || 0) + 1);
+    }
+    for (const [count, sameLines] of counts) {
+      if (sameLines > bestLines || (sameLines === bestLines && count > bestCount)) {
+        best = d;
+        bestLines = sameLines;
+        bestCount = count;
+      }
     }
   }
   return best;

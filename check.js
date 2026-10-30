@@ -188,10 +188,9 @@ function checkPlan() {
     // Two splices in one tray slot, or more slots than the case has.
     const closure = closureAt(p);
     if (closure || Object.keys(p.trays || {}).length) {
-      const keys = connectionsAt(model, p.id).filter((c) => c.kind !== "patch").map((c) => c.to);
       const seen = new Map();
       const tubeTrays = new Map();
-      const slots = traySlots(p, keys);
+      const slots = spliceSlots(model, p);
       for (const [key, ts] of slots) {
         const g = tubeGroup(key);
         if (g) {

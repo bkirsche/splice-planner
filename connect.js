@@ -607,7 +607,7 @@ function openConnections(locId) {
       const left = orderedGroups(groups.left, order.L);
       const right = orderedGroups(groups.right, order.R);
       const closure = closureAt(L);
-      const slots = traySlots(L, conns.filter((c) => c.kind !== "patch").map((c) => c.to));
+      const slots = spliceSlots(model, L) || new Map();
 
       info.innerHTML = "";
       const through = childCables(locId).filter((x) => x.through);
