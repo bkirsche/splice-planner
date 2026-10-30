@@ -387,7 +387,7 @@ function routeLattice(cards) {
   });
   const nearX = near(xs, inflated.flatMap((c) => [c.l, c.r]));
   const nearY = near(ys, inflated.flatMap((c) => [c.t, c.b]));
-  return { xs, ys, nx, ny, closed, hClosed, vClosed, hHug, vHug, nearX, nearY, idx, edgeUse: new Map(), nodeUse: new Map(), sideUse: new Set(), portUse: new Set() };
+  return { xs, ys, nx, ny, closed, hClosed, vClosed, hHug, vHug, nearX, nearY, idx, hUse: new Uint8Array(nx * ny), vUse: new Uint8Array(nx * ny), nodeUse: new Map(), sideUse: new Set(), portUse: new Set() };
 }
 
 // The spots on each side of a card where a line can leave or arrive:
@@ -424,7 +424,7 @@ function sideSpots(lo, hi) {
 
 // A* over (lattice point, heading).
 function routeOne(lat, k) {
-  const { xs, ys, nx, ny, closed, hClosed, vClosed, hHug, vHug, nearX, nearY, edgeUse, nodeUse, sideUse, portUse } = lat;
+  const { xs, ys, nx, ny, closed, hClosed, vClosed, hHug, vHug, nearX, nearY, hUse, vUse, nodeUse, sideUse, portUse } = lat;
   const starts = sidePorts(lat, k.A);
   const goals = new Map();
   for (const p of sidePorts(lat, k.B)) goals.set(p.n, p);
@@ -435,56 +435,96 @@ function routeOne(lat, k) {
     const y = ys[(n / nx) | 0];
     return Math.max(0, B.l - x, x - B.r) + Math.max(0, B.t - y, y - B.b);
   };
-  const best = new Float64Array(nx * ny * 4).fill(Infinity);
-  const from = new Int32Array(nx * ny * 4).fill(-1);
-  const heap = [];
+  // Best cost so far and the state before, per state. The arrays are
+  // big, so every line on the lattice reuses them: a state counts only
+  // once this search has set it (seen = this search's number).
+  if (!lat.best) {
+    lat.best = new Float64Array(nx * ny * 4);
+    lat.from = new Int32Array(nx * ny * 4);
+    lat.seen = new Uint32Array(nx * ny * 4);
+    lat.goalAt = new Uint32Array(nx * ny);
+    lat.search = 0;
+  }
+  const search = ++lat.search;
+  const { seen, goalAt } = lat;
+  // The goal spots of this search, marked on the lattice.
+  for (const n of goals.keys()) goalAt[n] = search;
+  const goalOf = (n) => (goalAt[n] === search ? goals.get(n) : undefined);
+  const bestA = lat.best;
+  const fromA = lat.from;
+  const best = (s) => (seen[s] === search ? bestA[s] : Infinity);
+  const setBest = (s, cost, prev) => {
+    seen[s] = search;
+    bestA[s] = cost;
+    fromA[s] = prev;
+  };
+  // A binary heap of states by estimated cost, kept as two lists (cost,
+  // state) so nothing is made per step.
+  const hf = [];
+  const hs = [];
+  const swap = (a, b) => {
+    const f = hf[a];
+    hf[a] = hf[b];
+    hf[b] = f;
+    const t = hs[a];
+    hs[a] = hs[b];
+    hs[b] = t;
+  };
   const push = (s, f) => {
-    heap.push([f, s]);
-    let i = heap.length - 1;
+    hf.push(f);
+    hs.push(s);
+    let i = hf.length - 1;
     while (i > 0) {
       const p = (i - 1) >> 1;
-      if (heap[p][0] <= heap[i][0]) break;
-      [heap[p], heap[i]] = [heap[i], heap[p]];
+      if (hf[p] <= hf[i]) break;
+      swap(p, i);
       i = p;
     }
   };
+  // Takes the cheapest off into popF and popS.
+  let popF = 0;
+  let popS = 0;
   const pop = () => {
-    const top = heap[0];
-    const last = heap.pop();
-    if (heap.length) {
-      heap[0] = last;
+    popF = hf[0];
+    popS = hs[0];
+    const lastF = hf.pop();
+    const lastS = hs.pop();
+    if (hf.length) {
+      hf[0] = lastF;
+      hs[0] = lastS;
       let i = 0;
       for (;;) {
         const l = 2 * i + 1;
         const r = l + 1;
         let m = i;
-        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
-        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (l < hf.length && hf[l] < hf[m]) m = l;
+        if (r < hf.length && hf[r] < hf[m]) m = r;
         if (m === i) break;
-        [heap[m], heap[i]] = [heap[i], heap[m]];
+        swap(m, i);
         i = m;
       }
     }
-    return top;
   };
   const startOf = new Map();
   for (const p of starts) {
     const s = p.n * 4 + p.dir;
     const cost = p.off * 3 + (portUse.has(p.n) ? ROUTE_CLASH : 0) + (sideUse.has(`${k.a.id}:${p.dir}:in`) ? ROUTE_SIDE : 0);
-    if (cost < best[s]) {
-      best[s] = cost;
+    if (cost < best(s)) {
+      setBest(s, cost, -1);
       startOf.set(s, p);
       push(s, cost + h(p.n));
     }
   }
   let end = -1;
-  while (heap.length) {
-    const [f, s] = pop();
+  while (hf.length) {
+    pop();
+    const f = popF;
+    const s = popS;
     const n = (s / 4) | 0;
     const d = s & 3;
-    const g = best[s];
+    const g = best(s);
     if (f - h(n) > g + 1e-6) continue;
-    const goal = goals.get(n);
+    const goal = goalOf(n);
     // Arrive heading into the card, straight on.
     if (goal && d === (goal.dir + 2) % 4 && !startOf.has(s)) {
       end = s;
@@ -500,7 +540,7 @@ function routeOne(lat, k) {
       const j2 = j + dj;
       if (i2 < 0 || j2 < 0 || i2 >= nx || j2 >= ny) continue;
       const n2 = j2 * nx + i2;
-      if (closed[n2] && !goals.has(n2)) continue;
+      if (closed[n2] && goalAt[n2] !== search) continue;
       // The stretch between the two points.
       const en = dj === 0 ? j * nx + Math.min(i, i2) : Math.min(j, j2) * nx + i;
       if ((dj === 0 ? hClosed : vClosed)[en]) continue;
@@ -508,11 +548,11 @@ function routeOne(lat, k) {
       let cost = len;
       if ((dj === 0 ? hHug : vHug)[en]) cost += len * ROUTE_HUG;
       cost += len * (dj === 0 ? nearY[j] : nearX[i]);
-      const goal2 = goals.get(n2);
+      const goal2 = goalOf(n2);
       if (goal2 && nd === (goal2.dir + 2) % 4 && sideUse.has(`${k.b.id}:${goal2.dir}:out`)) cost += ROUTE_SIDE;
       const turn = nd !== d;
       if (turn) cost += ROUTE_TURN;
-      if (edgeUse.has((dj === 0 ? "h" : "v") + en)) cost += ROUTE_CLASH;
+      if ((dj === 0 ? hUse : vUse)[en]) cost += ROUTE_CLASH;
       if (use) {
         // Turning where another line runs, or running through its corner,
         // would read as a join.
@@ -520,9 +560,8 @@ function routeOne(lat, k) {
         else if ((nd & 1 ? use.h : use.v)) cost += ROUTE_CROSS;
       }
       const s2 = n2 * 4 + nd;
-      if (g + cost < best[s2]) {
-        best[s2] = g + cost;
-        from[s2] = s;
+      if (g + cost < best(s2)) {
+        setBest(s2, g + cost, s);
         push(s2, g + cost + h(n2));
       }
     }
@@ -530,7 +569,7 @@ function routeOne(lat, k) {
   if (end < 0) return null;
   // Walk back, then claim the stretches, corners and spots used.
   const states = [];
-  for (let s = end; s >= 0; s = from[s]) states.unshift(s);
+  for (let s = end; s >= 0; s = fromA[s]) states.unshift(s);
   const first = startOf.get(states[0]);
   const goal = goals.get((end / 4) | 0);
   const pts = [first.edge];
@@ -547,7 +586,7 @@ function routeOne(lat, k) {
     if (q > 0) {
       const m = (states[q - 1] / 4) | 0;
       const horiz = (m / nx | 0) === (n / nx | 0);
-      edgeUse.set((horiz ? "h" : "v") + Math.min(m, n), true);
+      (horiz ? hUse : vUse)[Math.min(m, n)] = 1;
     }
     pts.push(p);
   }

@@ -653,7 +653,7 @@ function openAssign(fromId) {
       const homes = plan.unassigned.filter((x) => picked.has(x.id));
       const fromId = from.value;
       if (!fromId || !picked.size) return;
-      const fromName = plan.points.find((p) => p.id === fromId).name;
+      const fromName = point(fromId).name;
       withUndo(`Assigned ${homes.length} home${homes.length === 1 ? "" : "s"} to ${fromName}.`, () => {
         for (const h of homes) {
           const stop = addLocation(fromId, "nid", h.name, h.lot ? { lot: h.lot } : {});

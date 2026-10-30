@@ -30,7 +30,7 @@ function tailKind(loc, eq) {
 }
 
 function tailCable(eq) {
-  const c = eq.tail && plan.cables.find((x) => x.id === eq.tail);
+  const c = eq.tail && cableById(eq.tail);
   return c && cableKind(c) !== "cable" ? c : null;
 }
 

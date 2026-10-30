@@ -887,12 +887,20 @@ document.getElementById("check-close").addEventListener("click", () => {
 });
 
 // Keep the count on the Check button current as the plan changes.
+// Check plan reads nothing but the plan, so while the plan is the same
+// (a redraw for a tap, a fold, another layout) the count is too.
+let badgeFor = { plan: null, body: null, problems: 0, total: 0 };
+
 function updateCheckBadge() {
   const badge = document.getElementById("check-badge");
-  const found = checkPlan();
-  const problems = found.filter((f) => f.level === "problem").length;
-  badge.hidden = !found.length;
-  badge.textContent = problems || found.length;
+  const body = JSON.stringify(plan);
+  if (badgeFor.plan !== plan || badgeFor.body !== body) {
+    const found = checkPlan();
+    badgeFor = { plan, body, problems: found.filter((f) => f.level === "problem").length, total: found.length };
+  }
+  const { problems, total } = badgeFor;
+  badge.hidden = !total;
+  badge.textContent = problems || total;
   badge.className = "badge" + (problems ? "" : " warn");
 }
 

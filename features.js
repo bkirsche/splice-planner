@@ -104,7 +104,8 @@ function renderFeatures() {
   const cols = feCols(t);
   const all = t.rows();
   const rows = feRows(t);
-  for (const id of [...fe.picked]) if (!all.some((r) => r.id === id)) fe.picked.delete(id);
+  const ids = new Set(all.map((r) => r.id));
+  for (const id of [...fe.picked]) if (!ids.has(id)) fe.picked.delete(id);
 
   // Header: what's listed, the filter, close.
   const head = el("div", "fe-head");
