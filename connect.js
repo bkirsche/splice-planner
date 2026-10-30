@@ -628,6 +628,40 @@ new MutationObserver(() => {
   }, 0);
 }).observe(formPanel, { attributes: true, attributeFilter: ["hidden"] });
 
+// --- Take me there ---
+// Open a splice case with one strand lit up and a hint banner on top
+// (the way Check plan's Take me there does), its cable and tube opened
+// so the row shows. The light stays until the banner is closed.
+let caseFlag = null; // { locId, key, side }
+
+function openCaseAt(locId, key, side, hint) {
+  const g = endpointGroups(locId)[side === "L" ? "left" : "right"].find((x) => x.items.some((i) => i.key === key));
+  if (!caseFolds.has(locId)) caseFolds.set(locId, { cables: new Map(), tubes: new Map() });
+  const folds = caseFolds.get(locId);
+  if (g) {
+    folds.cables.set(`${side}:${g.title}`, true);
+    const item = g.items.find((i) => i.key === key);
+    if (item.tube) folds.tubes.set(`${side}:${g.title}:${item.tubeNo}`, false);
+  }
+  caseFlag = { locId, key, side };
+  if (formPanel.hidden || !formBody.querySelector(".cx-wrap") || !caseOpened || caseOpened.locId !== locId) openConnections(locId);
+  else formBody.dispatchEvent(new CustomEvent("cx-render"));
+  formBody.querySelector(".cx-flag-hint")?.remove();
+  const banner = el("div", "check-hint cx-flag-hint");
+  banner.setAttribute("role", "status");
+  banner.append(el("span", "check-hint-text", hint));
+  const x = btnEl("×", () => {
+    banner.remove();
+    caseFlag = null;
+    formBody.dispatchEvent(new CustomEvent("cx-render"));
+  }, "check-hint-x");
+  x.setAttribute("aria-label", "Close the hint");
+  banner.append(x);
+  formBody.prepend(banner);
+  const row = formBody.querySelector(`.cx-${side === "L" ? "left" : "right"} .cx-end[data-key="${CSS.escape(key)}"]`);
+  if (row) row.scrollIntoView({ block: "center" });
+}
+
 // Tap or Enter/Space folds or opens a header; Ctrl or Shift-click
 // selects what's in it instead. Its own buttons keep their clicks.
 function foldToggle(elm, open, toggle, pick) {
@@ -661,6 +695,8 @@ function openConnections(locId) {
   let menus = null; // row or header -> its right-click menu
   let blockIds = null; // side -> the block ids as shown, top to bottom
   let phaseView = null; // this render's phase marking, for the lines
+  let tracing = null; // the strand being traced: { key, side }
+  let lit = null; // what that trace runs through here, to light up
   const foldState = () => JSON.stringify([foldLevel, [...folds.cables], [...folds.tubes]]);
   if (!caseOpened || caseOpened.locId !== locId) {
     caseOpened = { locId, state: caseState(L), folds: foldState(),
@@ -673,7 +709,12 @@ function openConnections(locId) {
     const info = el("div", "cx-info");
     const tools = el("div", "cx-tools");
     const wrap = el("div", "cx-wrap");
-    body.append(info, tools, wrap);
+    const traceHold = el("div", "cx-trace");
+    body.append(info, tools, wrap, traceHold);
+    // Take me there asks this editor to show again; an editor that has
+    // since closed lets go.
+    const onAsk = () => (wrap.isConnected ? render() : body.removeEventListener("cx-render", onAsk));
+    body.addEventListener("cx-render", onAsk);
     const reopen = () => openConnections(locId);
 
     // Take connections apart. It asks first (Brian's one exception to
@@ -715,6 +756,33 @@ function openConnections(locId) {
       confirmBox("Put the splice case back?",
         `${n === 1 ? `${one} was made since you opened ${L.name} and will be taken apart.` : `${n} connections made since you opened ${L.name} will be taken apart.`} `
         + "Everything else goes back to how it was too. You can Undo it right after.", "Put it back", putBack);
+    }
+
+    // The trace drawer at the bottom of the editor: worked out again on
+    // every render, so it follows splices made or fixed meanwhile.
+    function showTrace() {
+      lit = null;
+      traceHold.innerHTML = "";
+      if (!tracing) return;
+      const { box, walked } = strandTraceBox(locId, tracing.key, tracing.side, {
+        close: () => {
+          tracing = null;
+          render();
+        },
+        go: (stop, end) => openCaseAt(stop.locId, stop.key, stop.side, `${end.replace(/^Ends here: /, "")} It's lit up below: `
+          + (stop.side === "R" ? "splice a free fiber coming in (on the left) to it." : "splice it to the fiber it's meant for (on the right).")),
+        fix: (f) => {
+          withUndo(`${f.text}.`, f.run, reopen);
+          render();
+        },
+      });
+      const here = walked.filter((x) => x.locId === locId).map((x) => x.c);
+      const keys = new Set([`${tracing.side}|${tracing.key}`]);
+      for (const c of here) keys.add(`L|${c.from}`).add(`R|${c.to}`);
+      // The connection objects are this render's: match them by their ends.
+      const ends = new Set(here.map((c) => `${c.from}>${c.to}`));
+      lit = { keys, conns: new Set((now ? [...now.byTarget.values()] : []).filter((c) => ends.has(`${c.from}>${c.to}`))) };
+      traceHold.append(box);
     }
 
     function fillGapsNow() {
@@ -787,6 +855,7 @@ function openConnections(locId) {
         return kind === "cable" ? endpointPhase(locId, `fiber:${id}`) : phaseIdx(findEquipment(id));
       };
       phaseView = { otherPhase, hideConn };
+      showTrace();
 
       info.innerHTML = "";
       const through = childCables(locId).filter((x) => x.through);
@@ -932,6 +1001,8 @@ function openConnections(locId) {
           x.addEventListener("pointerdown", (e) => e.stopPropagation());
           row.append(x);
         }
+        if (lit && lit.keys.has(`${side}|${item.key}`)) row.classList.add("cx-traced");
+        if (caseFlag && caseFlag.locId === locId && caseFlag.key === item.key && caseFlag.side === side) row.classList.add("check-target");
         if (conn && otherPhase(conn)) {
           row.classList.add("cx-other-phase");
           row.append(phaseBadge(phaseOf.get(conn), v));
@@ -1201,7 +1272,7 @@ function openConnections(locId) {
         // work on that fiber.
         const folded = !rowA || !rowB || out;
         path.setAttribute("class", "cx-line " + c.kind + (folded ? " folded" : "") + (sel.has(c.to) ? " sel" : "")
-          + (phaseView && phaseView.otherPhase(c) ? " other-phase" : ""));
+          + (phaseView && phaseView.otherPhase(c) ? " other-phase" : "") + (lit && lit.conns.has(c) ? " traced" : ""));
         const color = rowA ? rowA.style.background : keyColor(c.from);
         if (color) path.style.stroke = color;
         if (!folded) path.addEventListener("click", () => removeConns([c]));
@@ -1290,6 +1361,12 @@ function openConnections(locId) {
         } });
       }
       if (conn) items.push({ icon: "remove", label: "Remove this connection", danger: true, run: () => removeConns([conn]) });
+      items.push({ icon: "pin", label: "Trace this strand", sep: true, run: () => {
+        tracing = { key: item.key, side };
+        render();
+        const box = traceHold.querySelector(".trace-box");
+        if (box) box.scrollTop = 0;
+      } });
       const tube = tubeMenu && tubeMenu();
       if (tube) items.push(...tube.items.map((x, i) => (i ? x : { ...x, sep: true })));
       return { title: endpointLabel(item.key), caption: tube ? tube.title : side === "L" ? "Coming in" : "Going out", items, conns: conn ? [conn] : [] };
