@@ -501,12 +501,14 @@ function openPath(toId, cableId) {
         const arriving = plan.cables.find((x) => x.id === m.split(":")[1]);
         const span = c || { id: makeId(), from: from.id, to: to.id };
         // Everything this cable ran on to now belongs to the arriving cable.
-        const spans = c ? cableSpans(c) : [span];
+        const spans = c ? cableRunFrom(c) : [span];
         const stuck = resizeStuck(spans, arriving.fibers);
         if (stuck) return stuck;
         span.through = m.split(":")[0];
         span.prev = arriving.id;
         delete span.picks;
+        delete span.pins;
+        delete span.handOnly;
         delete span.kind;
         delete span.tailFt;
         if (!c) plan.cables.push(span);
@@ -712,8 +714,7 @@ function removeCableText(c) {
 }
 
 function removeCableFrom(c) {
-  const doomed = cableRunFrom(c);
-  plan.cables = plan.cables.filter((x) => !doomed.includes(x));
+  purgeRemoved([], cableRunFrom(c).map((x) => x.id));
 }
 
 // Every fiber of a cable with its tube and color.

@@ -1118,10 +1118,7 @@ function removePicked() {
       gridPicked.clear();
       finish();
       withUndo(`Removed ${what}${extra ? ` and ${plural(extra, "location")} fed from them` : ""}.`, () => {
-        plan.points = plan.points.filter((x) => !doomed.has(x.id));
-        plan.paths = plan.paths.filter((x) => !doomed.has(x.to));
-        plan.cables = plan.cables.filter((c) => !doomed.has(c.to));
-        plan.xconnects = plan.xconnects.filter((x) => !doomed.has(x.at));
+        purgeRemoved([...doomed]);
       });
     }, "Remove");
   });
