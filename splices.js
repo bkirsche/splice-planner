@@ -202,7 +202,17 @@ function buildSpliceModel() {
     const here = splittersAt(L);
     const inMap = c ? assign(cableStart(c)).map : new Map();
     const byItem = new Map([...inMap].map(([n, it]) => [it, n]));
-    for (const s of here) {
+    // Rows come in the shared block order (sortBlocks): cables, biggest
+    // first, then splitter inputs and tails, then drops.
+    const blocks = [
+      ...here.map((s) => ({ rank: BLOCK_TAIL, name: eqLabel(s), s })),
+      ...childCables(locId).filter((x) => !x.through).map((d) => ({ rank: cableBlockRank(d), fibers: d.fibers, name: d.name, d })),
+    ];
+    for (const { s, d } of sortBlocks(blocks)) {
+      if (d) {
+        cableRows(d);
+        continue;
+      }
       const sc = feederAt(locId, s);
       // An input taken apart by hand, or never spliced, feeds from nothing.
       const from = s.f2 && sc && s.f2 <= sc.fibers ? fiberLabel(cableStart(sc), s.f2)
@@ -213,7 +223,7 @@ function buildSpliceModel() {
         phase: Math.max(phaseIdx(s), sc ? phaseIdx(sc) : 0),
         src: s.f2 && sc && s.f2 <= sc.fibers ? { kind: "fiber", n: s.f2 } : null, dst: { kind: "split", id: s.id } });
     }
-    for (const d of childCables(locId).filter((x) => !x.through)) {
+    function cableRows(d) {
       for (const f of childFibers(d)) {
         let from;
         // On a cable spliced by hand only, a splitter output feeds a fiber

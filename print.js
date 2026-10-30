@@ -862,7 +862,7 @@ function bigPicture(L, rows) {
   const inCable = arriving && cableStart(arriving);
   const outs = childCables(L.id).filter((c) => !c.through && !isDrop(c) && phaseShown(point(c.to)));
   const throughs = childCables(L.id).filter((c) => c.through && phaseShown(point(c.to)));
-  const drops = childCables(L.id).filter((c) => isDrop(c) && phaseShown(point(c.to)));
+  const drops = sortCables(childCables(L.id).filter((c) => isDrop(c) && phaseShown(point(c.to))));
   const splitters = splittersAt(L).filter(phaseShown);
   // At the start of the route a fiber patched to a splitter output is
   // drawn from that splitter.
@@ -897,19 +897,11 @@ function bigPicture(L, rows) {
   // A tube that takes strands is drawn opened up, one line per fiber.
   const opened = (c, t) => !!(landing.get(c.id) || new Map()).get(t) && fibersInTube(c, t) > 1;
   const cableH = (c) => 12 + tubeRooms(c).reduce((a, b) => a + b, 0);
-  // Cables out are stacked in the order of the tubes that feed them, so
-  // the lines across the case don't cross; splitter-fed ones go last,
-  // next to the splitters and drops at the bottom.
-  const feedOrder = new Map();
-  for (const r of rows) {
-    if (r.dst.kind !== "cable") continue;
-    const src = srcOf(r);
-    const k = !src ? 2000 : src.kind === "split" ? 1000 : Math.ceil(src.n / 12);
-    feedOrder.set(r.dst.id, Math.min(k, feedOrder.get(r.dst.id) ?? Infinity));
-  }
-  const rightItems = [...outs.map((c) => ({ c, kind: "out" })), ...throughs.map((c) => ({ c, kind: "through" }))]
-    .map((it, i) => ({ ...it, order: feedOrder.get(it.c.id) ?? (it.kind === "through" ? 500 : 3000), i }))
-    .sort((a, b) => a.order - b.order || a.i - b.i);
+  // Cables out (and cables passing through) are stacked in the shared
+  // block order (sortCables): the big cables at the top, then tails,
+  // with the drops at the bottom.
+  const kindOf = new Map(throughs.map((c) => [c.id, "through"]));
+  const rightItems = sortCables([...outs, ...throughs]).map((c) => ({ c, kind: kindOf.get(c.id) || "out" }));
   const dropCols = drops.length > 14 ? 2 : 1;
   const dropRows = Math.ceil(drops.length / dropCols);
   const rightH = rightItems.reduce((h, it) => h + cableH(it.c) + 44, 0) + (drops.length ? 34 + dropRows * 22 : 0);
@@ -1092,10 +1084,13 @@ function bigPicture(L, rows) {
       const mid = (SX0 + SX1) / 2;
       const label = s.name ? eqLabel(s) : "";
       const name = label && !label.includes(s.ratio) ? `${label} · ${s.ratio}` : label || s.ratio;
-      const style = s.style && s.style.length > 40 ? s.style.slice(0, 39) + "…" : s.style;
+      // A long style shrinks to fit the box instead of being cut short.
+      const style = s.style || "";
+      const styleAttrs = style.length > 40 ? { "font-size": Math.max(9.5, (12.5 * 40) / style.length) } : {};
+      if (style.length > 52) Object.assign(styleAttrs, { textLength: SX1 - SX0 - 16, lengthAdjust: "spacingAndGlyphs" });
       splitG.append(svgEl("rect", { x: SX0, y, width: SX1 - SX0, height: SPLIT_BOX_H, rx: 10, fill: "#eef6f0", stroke: SPLIT_INK, "stroke-width": 3 }));
       splitG.append(text(mid, y + 25, name, { "text-anchor": "middle", "font-weight": 800, "font-size": 17, fill: SPLIT_INK }));
-      if (style) splitG.append(text(mid, y + 46, style, { "text-anchor": "middle", "font-size": 12.5, fill: SPLIT_INK }));
+      if (style) splitG.append(text(mid, y + 46, style, { "text-anchor": "middle", "font-size": 12.5, fill: SPLIT_INK, ...styleAttrs }));
       splitG.append(text(mid, y + (style ? 68 : 50), f2Label(s), { "text-anchor": "middle", "font-weight": 700, "font-size": 14, fill: SPLIT_INK }));
     }
   }
