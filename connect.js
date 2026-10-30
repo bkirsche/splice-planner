@@ -199,7 +199,8 @@ function endpointGroups(locId) {
 // --- Block order ---
 
 // The order the editor shows its blocks in, per side, as Arrange saved
-// it on the location. Only the display: splices and sheets don't see it.
+// it on the location, or as the user dragged the blocks (or moved them
+// from a header's menu). Only the display: splices and sheets don't see it.
 // Blocks it doesn't know yet keep their own order after the known ones.
 function orderedGroups(groups, ids) {
   if (!ids || !ids.length) return groups;
@@ -544,6 +545,7 @@ function openConnections(locId) {
   let now = null; // this render's connections, for selecting
   let hidden = null; // side -> key -> tube header, for rows folded away
   let menus = null; // row or header -> its right-click menu
+  let blockIds = null; // side -> the block ids as shown, top to bottom
   const title = isCabinet(L) ? `Connections at ${L.name}` : closureAt(L) ? `Splice case at ${L.name}` : `Splices at ${L.name}`;
   openForm(title, (body, foot) => {
     const info = el("div", "cx-info");
@@ -576,9 +578,10 @@ function openConnections(locId) {
       flash(n ? `Spliced ${n} fiber${n === 1 ? "" : "s"}.` : "Nothing left to fill.");
     }
 
-    // Only the display order changes; Undo puts the old one back.
-    function arrangeNow(left, right, conns) {
-      const was = arrangeBlocks(left, right, conns);
+    // Only the display order changes; Undo puts the old one back. It
+    // starts from the app's own order, so a hand-made order is replaced.
+    function arrangeNow(base, left, right, conns) {
+      const was = arrangeBlocks(base.left, base.right, conns);
       const ids = (gs) => gs.map((g) => g.id);
       const same = ids(was.l).join() === ids(left).join() && ids(was.r).join() === ids(right).join();
       if (same) {
@@ -587,6 +590,21 @@ function openConnections(locId) {
       }
       withUndo(`Arranged the blocks at ${L.name}: ${was.n} crossing line${was.n === 1 ? "" : "s"} left.`, () => {
         L.blockOrder = { L: ids(was.l), R: ids(was.r) };
+      }, reopen);
+      render();
+    }
+
+    // Moving blocks by hand (drag the grip, or a header's menu): only
+    // the display order, saved with Undo like Arrange. Splices stay.
+    function moveBlock(side, id, to) {
+      const ids = blockIds[side].filter((x) => x !== id);
+      const at = Math.max(0, Math.min(to, ids.length));
+      ids.splice(at, 0, id);
+      if (ids.join() === blockIds[side].join()) return;
+      const title = (wrap.querySelector(`.cx-group[data-id="${CSS.escape(id)}"]`) || {}).dataset?.title || "the block";
+      const where = at === 0 ? "to the top" : at === ids.length - 1 ? "to the bottom" : `to place ${at + 1} of ${ids.length}`;
+      withUndo(`Moved ${title} ${where} on the ${side === "L" ? "left" : "right"} at ${L.name}.`, () => {
+        L.blockOrder = { ...blockIds, [side]: ids };
       }, reopen);
       render();
     }
@@ -606,6 +624,7 @@ function openConnections(locId) {
       const order = L.blockOrder || {};
       const left = orderedGroups(groups.left, order.L);
       const right = orderedGroups(groups.right, order.R);
+      blockIds = { L: left.map((g) => g.id), R: right.map((g) => g.id) };
       const closure = closureAt(L);
       const slots = spliceSlots(model, L) || new Map();
 
@@ -614,7 +633,7 @@ function openConnections(locId) {
       const lines = [];
       if (closure) lines.push(`${eqLabel(closure)}: ${closure.trays} trays x ${closure.slots} splices.`);
       for (const t of through) lines.push(`${t.name} ${THROUGH_LABELS[t.through]} here (not spliced).`);
-      lines.push("Drag from the left to the right to connect, or tap one end and then the other. Drag a folded tube onto a folded tube to splice it all at once. Tap a line or × to take it apart.");
+      lines.push("Drag from the left to the right to connect, or tap one end and then the other. Drag a folded tube onto a folded tube to splice it all at once. Tap a line or × to take it apart. Drag a block by its ⋮⋮ grip to move it up or down.");
       for (const l of lines) info.append(el("p", "hint", l));
       if (!incomingCable(locId) && L.id !== plan.points[0].id) {
         info.append(el("p", "hint warn", `No cable reaches ${L.name} yet. You can still look around and set things up here.`));
@@ -665,7 +684,7 @@ function openConnections(locId) {
         render();
       }, "btn ghost"));
       if (conns.length) {
-        const arr = btnEl("Arrange", () => arrangeNow(left, right, conns), "btn ghost");
+        const arr = btnEl("Arrange", () => arrangeNow(groups, left, right, conns), "btn ghost");
         arr.title = "Reorder the cables and splitters so the lines cross as little as possible. Splices stay as they are.";
         tools.append(arr);
       }
@@ -733,6 +752,7 @@ function openConnections(locId) {
         for (const g of groups) {
           const box = el("div", "cx-group");
           box.dataset.title = g.title;
+          box.dataset.id = g.id;
           const head = el("div", "cx-head");
           const cableKey = `${side}:${g.title}`;
           const open = folds.cables.has(cableKey) ? folds.cables.get(cableKey) : foldLevel !== "cables";
@@ -742,6 +762,23 @@ function openConnections(locId) {
             folds.cables.set(cableKey, !open);
             render();
           }, (e) => selectGroup(connsIn(g.items), e));
+          // The grip moves the block; only it starts a block drag.
+          if (groups.length > 1) {
+            const grip = el("button", "cx-grip", "⋮⋮");
+            grip.type = "button";
+            grip.title = "Drag to move this block up or down (or use the arrow keys)";
+            grip.setAttribute("aria-label", `Move ${g.title}`);
+            grip.addEventListener("pointerdown", (e) => startBlockDrag(e, box, side));
+            grip.addEventListener("keydown", (e) => {
+              if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+              e.preventDefault();
+              e.stopPropagation();
+              moveBlock(side, g.id, blockIds[side].indexOf(g.id) + (e.key === "ArrowUp" ? -1 : 1));
+              const again = wrap.querySelector(`.cx-group[data-id="${CSS.escape(g.id)}"] .cx-grip`);
+              if (again) again.focus();
+            });
+            head.prepend(grip);
+          }
           box.append(head);
           const tubes = new Map(); // tube number -> its items
           for (const item of g.items) if (item.tube) {
@@ -779,7 +816,15 @@ function openConnections(locId) {
             folds.cables.set(cableKey, !open);
             render();
           } };
-          menus.set(head, () => ({ title: g.title, caption: "Cable", conns: groupConns, items: [
+          const pos = groups.indexOf(g);
+          const last = groups.length - 1;
+          const moves = groups.length < 2 ? [] : [
+            ...(pos > 0 ? [{ icon: "move", label: "Move up", sep: true, run: () => moveBlock(side, g.id, pos - 1) },
+              { icon: "move", label: "Move to top", run: () => moveBlock(side, g.id, 0) }] : []),
+            ...(pos < last ? [{ icon: "move", label: "Move down", sep: pos === 0, run: () => moveBlock(side, g.id, pos + 1) },
+              { icon: "move", label: "Move to bottom", run: () => moveBlock(side, g.id, last) }] : []),
+          ];
+          menus.set(head, () => ({ title: g.title, caption: g.id.startsWith("cable:") ? "Cable" : "Block", conns: groupConns, items: [
             ...groupItems(groupConns, `on ${g.title}`, "on this cable"),
             { ...foldCable, sep: groupConns.length > 0 },
             ...(open && tubes.size > 1 ? [{ icon: "fold", label: "Fold every tube", run: () => {
@@ -789,6 +834,7 @@ function openConnections(locId) {
               for (const t of tubes.keys()) folds.tubes.set(tubeKey(t), false);
               render();
             } }] : []),
+            ...moves,
           ] }));
 
           // A folded cable is just its header; lines to it end there.
@@ -1218,6 +1264,62 @@ function openConnections(locId) {
         const temp = wrap.querySelector(".cx-temp");
         if (temp) temp.remove();
         if (over) spliceTubes(src, over.tubeDrop);
+      };
+      addEventListener("pointermove", move, true);
+      addEventListener("pointerup", up, true);
+      addEventListener("pointercancel", up, true);
+    }
+
+    // Drag a block by its grip to another place in the same column. A
+    // line shows where it will land; letting go saves the new order.
+    function startBlockDrag(e, box, side) {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const col = box.parentElement;
+      const scroller = side === "L" ? col : formPanel;
+      const x = e.clientX;
+      const y = e.clientY;
+      let moved = false;
+      let to = null; // the index it would land at, among the others
+      let mark = null;
+      const others = () => [...col.querySelectorAll(":scope > .cx-group")].filter((b) => b !== box);
+      const clearMark = () => {
+        if (mark) mark.classList.remove("cx-drop-before", "cx-drop-after");
+        mark = null;
+      };
+      const move = (ev) => {
+        if (!moved && Math.hypot(ev.clientX - x, ev.clientY - y) <= 6) return;
+        ev.preventDefault();
+        if (!moved) {
+          moved = true;
+          box.classList.add("cx-block-dragging");
+          wrap.classList.add("cx-moving");
+        }
+        const list = others();
+        to = list.findIndex((b) => {
+          const r = b.getBoundingClientRect();
+          return ev.clientY < r.top + r.height / 2;
+        });
+        if (to < 0) to = list.length;
+        clearMark();
+        if (list.length) {
+          mark = to < list.length ? list[to] : list[list.length - 1];
+          mark.classList.add(to < list.length ? "cx-drop-before" : "cx-drop-after");
+        }
+        const pr = scroller.getBoundingClientRect();
+        if (ev.clientY > pr.bottom - 50) scroller.scrollTop += 14;
+        if (ev.clientY < pr.top + 50) scroller.scrollTop -= 14;
+      };
+      const up = (ev) => {
+        removeEventListener("pointermove", move, true);
+        removeEventListener("pointerup", up, true);
+        removeEventListener("pointercancel", up, true);
+        clearMark();
+        box.classList.remove("cx-block-dragging");
+        wrap.classList.remove("cx-moving");
+        if (!moved || ev.type === "pointercancel" || to == null) return;
+        moveBlock(side, box.dataset.id, to);
       };
       addEventListener("pointermove", move, true);
       addEventListener("pointerup", up, true);
