@@ -209,6 +209,29 @@ function nextFreePort(eq, exceptHomeId) {
   return null;
 }
 
+// Where homes fed from locId get DS ports: the nearest location at or
+// upstream with a splitter (handhole, pedestal or anything else), its
+// splitters that feed homes (not cascades; spliced ones first, as in
+// autoCounts), in order, and their free ports in total. The Fed from
+// list and Distributed split both use it.
+function dsFeed(locId) {
+  const loc = feedingLocation(locId);
+  const all = loc ? splittersAt(loc).filter((s) => !isCascade(s)) : [];
+  const ready = all.filter((s) => !s.handOnly);
+  const list = ready.length ? ready : all;
+  if (!list.length) return null;
+  return { loc, list, free: list.reduce((n, s) => n + splitterPorts(s) - usedPorts(s).size, 0) };
+}
+
+// The next free DS port across a location's splitters, first one first.
+function nextFreeDs(list) {
+  for (const s of list) {
+    const port = nextFreePort(s);
+    if (port) return { splitterId: s.id, port };
+  }
+  return null;
+}
+
 // --- F2 for a splitter ---
 
 // Splitters fed from the same physical cable share its fiber numbers,
