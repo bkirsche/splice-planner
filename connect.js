@@ -455,6 +455,16 @@ function traySlots(L, keys) {
   return out;
 }
 
+// The one tray/slot map for a location, used by the splice editor, the
+// list, the drawing, the printed checklist and Check plan: slots go to
+// the location's real splices (not patches), all phases, before any
+// filtering for display, so a splice has the same slot everywhere and an
+// unspliced row has none. Null without a splice case or slots set by hand.
+function spliceSlots(model, L) {
+  if (!closureAt(L) && !Object.keys(L.trays || {}).length) return null;
+  return traySlots(L, connectionsAt(model, L.id).filter((c) => c.kind !== "patch").map((c) => c.to));
+}
+
 // A splice case's trays as cards of slot circles. `at` maps "tray/slot"
 // to the splice key in it; onSlot makes the slots tappable.
 function trayPicture(trays, size, at = new Map(), onSlot = null, selected = null) {

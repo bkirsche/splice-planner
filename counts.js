@@ -187,6 +187,12 @@ function usedPorts(eq, exceptHomeId) {
   return used;
 }
 
+// usedPorts, counting only homes in a phase on screen (print and export
+// counts follow the phase rule, phaseVisible).
+function shownUsedPorts(eq) {
+  return new Map([...usedPorts(eq)].filter(([, h]) => phaseShown(h)));
+}
+
 // A cascade splitter (like the 1x8s in an LCP) feeds other splitters,
 // not homes: its outputs are patched or spliced onward and no home is on
 // its ports.
